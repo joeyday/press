@@ -1,0 +1,9 @@
+Revert article-moved display title; keep article-aware sorting
+
+The displayTitleAlpha helper (which reformatted "The X" → "X, The"
+for display in the alphabetical index) has been removed — titles are
+now shown verbatim everywhere, same as before.
+
+Article-aware sorting (sortableTitle) remains in place across all
+six sort sites: alphabetical index, featured topics, drafts,
+category members, categorical index, and backlinks pages.
