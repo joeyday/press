@@ -6,16 +6,17 @@ Living roadmap for Press. Update it as work lands; delete finished items rather 
 
 The content repo is `joeyday/totascriptura.org`. Both repos are public, so no CI token is needed. The content repo depends on Press as a git dependency. The lockfile pins the exact Press commit, so work on Press can't reach the live site until the content repo deliberately bumps it.
 
-**Press:**
-- Add `bin: { "press": "build.js" }`, a shebang, `files`, `engines`, and `private: true` (which blocks accidental npm publishing; git installs still work).
-- Possibly move `template/` here, resolving it from `import.meta.url` instead of the cwd.
+**Press (done in v0.1.0):**
+- Added `bin`, a shebang, `files`, `engines` and `private: true`.
+- `template/` moved here and is resolved from `import.meta.url`. The dead `embed.ejs` was dropped.
+- Verified by installing the packed tarball into a copy of the vault and running `npm run build`: the output was identical to the baseline.
 
 **Content repo:**
-- Replace the nine dependencies with `"press": "github:joeyday/press"` and add `"build": "press"`.
+- Replace the nine dependencies with `"press": "github:joeyday/press#v0.1.0"` (pinned to a tag) and add `"build": "press"`.
 - Regenerate the lockfile.
 - Delete `build.js`, and `template/` if it moved.
 - Have `deploy.yml` run `npm ci && npm run build`, and bump Node 20 to 22, since 20 is end-of-life.
-- Bump Press later with `npm update press`.
+- To bump Press later, change the tag and regenerate the lockfile (see `CLAUDE.md` → Releasing).
 
 ## 1. Short-term goals (set 2026-10-01)
 

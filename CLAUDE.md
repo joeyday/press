@@ -34,6 +34,18 @@ node ../scripts/compare-dist.mjs ../baseline/dist dist      # must say IDENTICAL
 - The layout uses `Date.now()` cache-busters, so raw `diff -r` always differs. `compare-dist.mjs` normalises them.
 - For edge cases the vault lacks, use a scratch vault in the scratchpad.
 
+## Releasing
+
+The content repo (`joeyday/totascriptura.org`, cloned at `~/Documents/Obsidian/Tota Scriptura`) depends on `github:joeyday/press#vX.Y.Z` and runs `npm run build` → `press` in CI. Nothing in Press reaches the live site until a tag is bumped there.
+
+To release:
+1. Bump `version` in `package.json`.
+2. Commit, then tag `vX.Y.Z` and push the tag.
+3. In the content repo, update the tag in `package.json` and run `npm install --package-lock-only` (never a full `npm install` inside the iCloud vault).
+4. Commit and push. Only do this with Joey's go-ahead, since it deploys the live site.
+
+`template/` (layout, CSS, JS, fonts) belongs to Press. It is resolved from `build.js`'s own directory, and its assets are copied alongside the vault's.
+
 ## Architecture in one breath
 
 `build()` does the following, in order:

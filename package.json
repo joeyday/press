@@ -1,8 +1,20 @@
 {
   "name": "press",
-  "version": "1.0.0",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bespoke static site generator for totascriptura.org",
   "type": "module",
   "license": "MIT",
+  "bin": {
+    "press": "build.js"
+  },
+  "files": [
+    "build.js",
+    "template/"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
     "ejs": "^4.0.1",
     "gray-matter": "^4.0.3",

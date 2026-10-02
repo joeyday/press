@@ -1,5 +1,7 @@
+#!/usr/bin/env node
 import fs from "fs/promises";
 import path from "path";
+import { fileURLToPath } from "url";
 import matter from "gray-matter";
 
 // ─── Bible Reference Auto-Linker ──────────────────────────────────────────────
@@ -1314,8 +1316,13 @@ const md = markdownIt({
   })
   .use(markdownItAttrs);
 
+// The vault (content) is the working directory; the template ships with Press.
 const OUTPUT_DIR = "dist";
-const TEMPLATE_PATH = path.join("template", "layout.ejs");
+const TEMPLATE_DIR = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "template",
+);
+const TEMPLATE_PATH = path.join(TEMPLATE_DIR, "layout.ejs");
 const SKIP_FILES = new Set(["replit.md"]);
 const MD_SKIP_DIRS = new Set([
   "node_modules",
@@ -1673,7 +1680,10 @@ async function build() {
   const filesToProcess = [];
 
   const imageMap = {};
-  const assetFiles = await findAssetFiles(".");
+  const assetFiles = [
+    ...(await findAssetFiles(".")),
+    ...(await findAssetFiles(TEMPLATE_DIR)),
+  ];
   const assetsOutDir = path.join(OUTPUT_DIR, "asset");
   if (assetFiles.length > 0) {
     await ensureDir(assetsOutDir);

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title><%= frontmatter.title %> ‹ Tota Scriptura</title>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/asset/style.css?<%= Math.floor(Date.now() / 1000) %>">
+    
+    <link rel="stylesheet" href="https://use.typekit.net/exn2xvh.css">
+    <link rel="stylesheet" href="https://kit.fontawesome.com/4a9f54cbf1.css" crossorigin="anonymous">
+    
+    <link rel="apple-touch-icon" sizes="57x57" href="/asset/apple-touch-icon-57x57.png?v=<%= Math.floor(Date.now() / 1000) %>">
+    <link rel="apple-touch-icon" sizes="60x60" href="/asset/apple-touch-icon-60x60.png?v=<%= Math.floor(Date.now() / 1000) %>">
+    <link rel="apple-touch-icon" sizes="72x72" href="/asset/apple-touch-icon-72x72.png?v=<%= Math.floor(Date.now() / 1000) %>">
+    <link rel="apple-touch-icon" sizes="76x76" href="/asset/apple-touch-icon-76x76.png?v=<%= Math.floor(Date.now() / 1000) %>">
+    <link rel="apple-touch-icon" sizes="114x114" href="/asset/apple-touch-icon-114x114.png?v=<%= Math.floor(Date.now() / 1000) %>">
+    <link rel="apple-touch-icon" sizes="120x120" href="/asset/apple-touch-icon-120x120.png?v=<%= Math.floor(Date.now() / 1000) %>">
+    <link rel="apple-touch-icon" sizes="144x144" href="/asset/apple-touch-icon-144x144.png?v=<%= Math.floor(Date.now() / 1000) %>">
+    <link rel="apple-touch-icon" sizes="152x152" href="/asset/apple-touch-icon-152x152.png?v=<%= Math.floor(Date.now() / 1000) %>">
+    <link rel="apple-touch-icon" sizes="180x180" href="/asset/apple-touch-icon-180x180.png?v=<%= Math.floor(Date.now() / 1000) %>">
+    <link rel="icon" type="image/png" href="/asset/favicon-32x32.png?v=<%= Math.floor(Date.now() / 1000) %>" sizes="32x32">
+    <link rel="icon" type="image/png" href="/asset/favicon-194x194.png?v=<%= Math.floor(Date.now() / 1000) %>" sizes="194x194">
+    <link rel="icon" type="image/png" href="/asset/favicon-96x96.png?v=<%= Math.floor(Date.now() / 1000) %>" sizes="96x96">
+    <link rel="icon" type="image/png" href="/asset/android-chrome-192x192.png?v=<%= Math.floor(Date.now() / 1000) %>" sizes="192x192">
+    <link rel="icon" type="image/png" href="/asset/favicon-16x16.png?v=<%= Math.floor(Date.now() / 1000) %>" sizes="16x16">
+    <link rel="shortcut icon" href="/asset/favicon.ico?<%= Math.floor(Date.now() / 1000) %>">
+    <meta name="msapplication-TileColor" content="#616161">
+    <meta name="msapplication-TileImage" content="/asset/mstile-144x144.png?v=<%= Math.floor(Date.now() / 1000) %>">
+    <meta name="theme-color" content="#ffffff">
+    <meta name="format-detection" content="telephone=no">
+    
+</head>
+<body<% if (bodyClasses.length) { %> class="<%= bodyClasses.join(' ') %>"<% } %>>
+    <header>
+        <a href="/"><span class="site-logo fa-sharp fa-solid fa-feather-pointed"></span> <span class="site-title">Tota Scriptura</span></a>
+    </header>
+    <main>
+        <article>
+            <header>
+                <h1><%= frontmatter.title %></h1>
+                <% if (frontmatter['quick nav']) { %>
+                <nav class="quick-nav">
+                    <ul>
+                        <li><a href="/index/featured">Featured<span> topics</span></a></li>
+                        <li><a href="/index/alphabetical">Alphabetical<span> index</span></a></li>
+                    </ul>
+                </nav>
+                <% } else if (featured || featuredWith) { %><span class="featured-badge fa-sharp fa-solid fa-star"></span><% } %>
+            </header>
+            
+            <% if (frontmatter.draft) { %>
+            <div class="message"><p><span>&#9998;</span> <em>Notice: this topic is a working draft.</em></p></div>
+            <% } %>
+            
+            <%- content %>
+
+            <% if (subcategories.length > 0) { %>
+            <section>
+                <h2>Subcategories</h2>
+                <ul>
+                    <% subcategories.forEach(function(sub) { %>
+                    <li><a href="<%= sub.url %>"><%= sub.title %></a></li>
+                    <% }); %>
+                </ul>
+            </section>
+            <% } %>
+    
+            <% if (pages.length > 0) { %>
+            <section>
+                <h2>Pages in this category</h2>
+                <ul>
+                    <% pages.forEach(function(page) { %>
+                    <li><a href="<%= page.url %>"><%= page.title %></a></li>
+                    <% }); %>
+                </ul>
+            </section>
+            <% } %>
+    
+            <% if (categories.length) { %>
+            <p class="categories">
+                <span class="categories-icon fa-sharp fa-solid fa-tags fa-rotate-90"></span>
+                <a class="index-link" href="/index/categorical">Categories</a>:
+                <% categories.forEach(function(cat, i) { %>
+                <a href="<%= cat.url %>"><%= cat.title %></a><%= i < categories.length - 1 ? ', ' : '' %>
+                <% }); %>
+            </p>
+            <% } %>
+        </article>
+    </main>
+    
+    <h2 id="page-actions" class="visually-hidden">Page actions</h2>
+    <nav class="page-actions" aria-labelledby="page-actions">
+        <ul>
+            <% if (!isAside) { %>
+            <li class="topic selected">Topic</li>
+            <% } else if (asideOf) { %>
+            <li class="topic"><a href="<%= asideOf.url %>">Topic</a></li>
+            <% } else { %>
+            <li class="topic muted">Topic</li>
+            <% } %>
+
+            <% if (isAside) { %>
+            <li class="notes selected">Notes</li>
+            <% } else if (asides.length) { %>
+            <li class="notes"><a href="<%= asides[0].url %>">Notes</a></li>
+            <% } else { %>
+            <li class="notes muted">Notes</li>
+            <% } %>
+
+            <li class="backlinks"><a href="backlinks">Backlinks</a></li>
+        </ul>
+    </nav>
+
+    <h2 id="site-navigation" class="visually-hidden">Site navigation</h2>
+    <nav class="site-navigation" aria-labelledby="site-navigation">
+        <div>
+            <ul>
+                <li><a href="/">Home page</a></li>
+                <li><a href="/about">About this project</a></li>
+            </ul>
+
+            <ul>
+                <li><a href="/index/featured">Featured topics</a></li>
+                <li><a href="/index/alphabetical">Alphabetical index</a></li>
+                <li><a href="/index/categorical">Categorical index</a></li>
+                <li><a href="/index/scripture">Scripture index</a></li>
+            </ul>
+        </div>
+        
+        <div>
+            <ul>
+                <li><a href="/random">Random page</a></li>
+            </ul>
+
+            <form action="/search" method="GET">
+                <input type="text" name="q" placeholder="Keywords">
+                <button type="submit">Search</button>
+            </form>
+        </div>
+    </nav>
+    
+    <footer>
+        <p>Copyright &copy; 2009–<%= new Date().getFullYear() % 100 %> Joey Day</p>
+        <p><a href="/about">About</a> &middot; <a href="/colophon">Colophon</a></p>
+    </footer>
+
+	<script type="module" src="/asset/css-naked.js?<%= Math.floor(Date.now() / 1000) %>"></script>
+</body>
+</html>

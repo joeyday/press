@@ -1,29 +1,37 @@
 # Press
 
-A static site generator for an Obsidian-style Markdown vault. It turns a folder of `.md` files into a static HTML site for GitHub Pages. Everything is in one script, `build.js`.
+The bespoke static site generator for [totascriptura.org](https://totascriptura.org). It turns the site's Obsidian vault into a static HTML site for GitHub Pages. The generator is `build.js`; the layout, CSS and fonts live in `template/`.
 
 This reference was written from the code as of October 2026. It replaces the Replit-era `archive/replit.md`. Where the two disagree, this file is the correct one.
 
 ## Running
 
-```sh
-cd path/to/content-vault
-node path/to/press/build.js
+The content repo installs Press as a git dependency and runs its `press` command from the vault root:
+
+```jsonc
+// totascriptura.org/package.json
+"scripts": { "build": "press" },
+"devDependencies": { "press": "github:joeyday/press#v0.1.0" }
 ```
 
-Every path is resolved from the **working directory**: the vault scan, `template/layout.ejs`, `abbreviations.json`, `alt-text.json`, and the output directory `dist/`. Bare-module imports resolve from `build.js`'s own location, so dependencies only need to be installed next to `build.js`.
+During Press development, run `cd vault && node ../build.js` (see `CLAUDE.md`).
+
+The vault scan, `abbreviations.json`, `alt-text.json` and the output directory `dist/` are resolved from the **working directory**. The template is resolved from Press's own directory.
 
 `dist/` is **not** cleaned before a build. Delete it yourself for a clean build. (See `docs/plan.md`.)
 
 Dependencies: `gray-matter`, `markdown-it`, `markdown-it-footnote`, `markdown-it-mark`, `markdown-it-container`, `markdown-it-bracketed-spans`, `markdown-it-attrs`, `ejs`, `slugify`. The search page loads `minisearch@7` from jsDelivr at runtime.
 
-## Inputs (in the vault)
+## Inputs
+
+`template/` (in Press) holds `layout.ejs` and the site's CSS, JS and fonts. Its assets are copied to `dist/asset/` along with the vault's.
+
+The rest come from the vault:
 
 | Path | Required | Purpose |
 |---|---|---|
-| `template/layout.ejs` | yes | Page layout; the build fails without it |
 | `**/*.md` | | Pages. Skipped directories: `node_modules`, `dist`, `.git`, `.github`, `.local`, `template`, and any dot-prefixed directory. Files named `replit.md` are skipped too (case-insensitive). |
-| `**/*.{png,jpg,jpeg,gif,svg,webp,avif,ico,bmp,css,js,eot,otf,ttf,woff,woff2}` | | Copied flat into `dist/asset/`. This scan does include `template/`. Only `build.js` is excluded, so any other `.js` file in the vault is copied too. If two files share a name (compared case-insensitively), the build warns and the last one copied wins. |
+| `**/*.{png,jpg,jpeg,gif,svg,webp,avif,ico,bmp,css,js,eot,otf,ttf,woff,woff2}` | | Copied flat into `dist/asset/`. Only `build.js` is excluded, so any other `.js` file in the vault is copied too. If two files share a name (compared case-insensitively), the build warns and the last one copied wins. |
 | `abbreviations.json` | no | `{ "term": "expansion" \| null }` |
 | `alt-text.json` | no | `{ "image-basename.png": "alt text" }` |
 
