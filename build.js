@@ -1481,6 +1481,12 @@ function pathKey(relDir, baseName) {
   return (relDir ? `${relDir}/${baseName}` : baseName).toLowerCase().trim();
 }
 
+// The category page a `categories` value names. Obsidian writes the folder
+// into a link when the bare name is ambiguous, so `category/Foo` works too.
+function findCategory(index, name) {
+  return index.byPath[pathKey("category", name.replace(/^\/?category\//i, ""))];
+}
+
 // notes/ at the root, or <dir>/notes/, holds the notes pages for the pages in
 // the parent directory. Returns that parent directory ("" for the root), or
 // null when relDir is not a notes directory.
@@ -1790,6 +1796,7 @@ async function build() {
     const fileInfo = {
       relDir,
       isNote: parentDir !== null,
+      isCategory: relDir === "category",
       // The folder a page "belongs to": its own, or its notes folder's parent.
       nsDir: parentDir ?? relDir,
       fileName,
@@ -1833,6 +1840,44 @@ async function build() {
         toUrl: fileInfo.finalUrlPath,
         toTitle: fileInfo.title,
       });
+    }
+  }
+
+  // ─── Categories ───
+  // A category is a page in category/. A page's `categories` names are looked
+  // up there, and its members are the listed pages that name it. An empty
+  // category is unlisted, which can in turn empty its parent, so repeat until
+  // nothing changes.
+  let membersMap;
+  for (let changed = true; changed; ) {
+    membersMap = {};
+    for (const fileInfo of filesToProcess) {
+      if (fileInfo.hidden || fileInfo.unlisted) continue;
+      for (const catName of fileInfo.categories) {
+        const target = findCategory(index, catName);
+        if (!target) continue;
+        (membersMap[target.finalUrlPath] ??= []).push({
+          title: fileInfo.title,
+          url: fileInfo.finalUrlPath,
+        });
+      }
+    }
+    changed = false;
+    for (const fileInfo of filesToProcess) {
+      if (!fileInfo.isCategory || fileInfo.hidden || fileInfo.unlisted) continue;
+      if (membersMap[fileInfo.finalUrlPath]) continue;
+      fileInfo.unlisted = true;
+      changed = true;
+    }
+  }
+  for (const fileInfo of filesToProcess) {
+    if (fileInfo.hidden || fileInfo.unlisted) continue;
+    for (const catName of fileInfo.categories) {
+      if (!findCategory(index, catName)) {
+        console.warn(
+          `Warning: Could not find category "${catName}" in "${fileInfo.filePath}"`,
+        );
+      }
     }
   }
 
@@ -1901,31 +1946,6 @@ async function build() {
     }
   }
 
-  // membersMap: keyed by the URL of the category page a file belongs to.
-  const membersMap = {};
-  for (const fileInfo of filesToProcess) {
-    if (fileInfo.hidden) continue;
-    if (fileInfo.unlisted) continue;
-    for (const catName of fileInfo.categories) {
-      const resolved = resolveLink(catName, fileMap, index, "category");
-      if (!resolved.url) {
-        if (resolved.ambiguous) {
-          console.warn(
-            `Warning: Ambiguous category target — "${catName}" in "${fileInfo.filePath}"`,
-          );
-        }
-        continue;
-      }
-      if (!membersMap[resolved.url]) {
-        membersMap[resolved.url] = [];
-      }
-      membersMap[resolved.url].push({
-        title: fileInfo.title,
-        url: fileInfo.finalUrlPath,
-      });
-    }
-  }
-
   // Sort each category's member list article-aware alphabetically so category
   // pages and subcategory pages render in consistent order regardless of file
   // discovery order.
@@ -1968,8 +1988,9 @@ async function build() {
   }
   const draftUrls = new Set(draftPages.map((p) => p.url));
   const featuredUrls = new Set(featuredPages.map((p) => p.url));
-  // membersMap is now URL-keyed, so its keys are already the category page URLs.
-  const categoryUrls = new Set(Object.keys(membersMap));
+  const categoryUrls = new Set(
+    filesToProcess.filter((f) => f.isCategory).map((f) => f.finalUrlPath),
+  );
   const asideUrls = new Set(
     filesToProcess.filter((f) => f.isNote).map((f) => f.finalUrlPath),
   );
@@ -2037,7 +2058,7 @@ async function build() {
     if (fileInfo.isNote) continue;
     if (fileInfo.hidden) continue;
     if (fileInfo.unlisted) continue;
-    if (membersMap[fileInfo.finalUrlPath]) continue;
+    if (fileInfo.isCategory) continue;
 
     allPages.push({
       title: fileInfo.title,
@@ -2202,25 +2223,20 @@ async function build() {
     const htmlContent = md.render(markdownContent);
 
     const resolvedCategories = fileInfo.categories.map((catName) => {
-      const resolved = resolveLink(catName, fileMap, index, "category");
-      if (resolved.url) {
-        const targetFi = urlToFileInfo[resolved.url];
-        return {
-          title: targetFi ? targetFi.title : catName,
-          url: resolved.url,
-        };
-      }
-      return {
-        title: catName,
-        url: `/${slugify(catName, { lower: true, strict: true })}`,
-      };
+      const target = findCategory(index, catName);
+      return target
+        ? { title: target.title, url: target.finalUrlPath }
+        : {
+            title: catName,
+            url: `/${slugify(catName, { lower: true, strict: true })}`,
+          };
     });
 
     const allMembers = membersMap[fileInfo.finalUrlPath] || [];
     const subcategories = [];
     const pages = [];
     for (const member of allMembers) {
-      if (membersMap[member.url] && membersMap[member.url].length > 0) {
+      if (categoryUrls.has(member.url)) {
         subcategories.push(member);
       } else {
         pages.push(member);
@@ -2358,18 +2374,15 @@ async function build() {
     }
   }
 
-  // membersMap is URL-keyed; its keys are the category page URLs.
-  const topLevelCategoryPages = Object.keys(membersMap)
+  const topLevelCategoryPages = filesToProcess
     .filter(
-      (url) =>
-        !pagesWithCategories.has(url) &&
-        !hiddenUrls.has(url) &&
-        !unlistedUrls.has(url),
+      (fi) =>
+        fi.isCategory &&
+        !fi.hidden &&
+        !fi.unlisted &&
+        !pagesWithCategories.has(fi.finalUrlPath),
     )
-    .map((url) => {
-      const fi = urlToFileInfo[url];
-      return { title: fi ? fi.title : url, url };
-    })
+    .map((fi) => ({ title: fi.title, url: fi.finalUrlPath }))
     .sort((a, b) =>
       sortableTitle(a.title).localeCompare(
         sortableTitle(b.title),

@@ -61,20 +61,19 @@ Keys are matched case-insensitively for every property below. The template, howe
 | `draft` | Listed on `/index/drafts`. Links to it get the `draft` class. |
 | `featured` | Listed on `/index/featured`. Gets a star on `/index/alphabetical`. Links to it get the `featured` class. |
 | `featured with` | Value is a page name or `[[wikilink]]`. Shown as "(and …)" after the target on `/index/featured`. Gets a star on the alphabetical index. |
-| `categories` | A string or list of page names/`[[wikilinks]]`. Each target becomes a category page. |
+| `categories` | A string or list of page names/`[[wikilinks]]`, each naming a page in `category/`, by basename or as `category/Name` (case-insensitive). A page in `category/` is a category page. A category with no listed members is made `unlisted` automatically, which can empty its parent category in turn. A name with no matching page logs a warning and renders as a broken link. |
 | `aliases` | A string or list. Each alias writes a meta-refresh redirect at `/{relDir}/{slugify(alias)}`, is listed on the alphabetical index as "Alias (see Title)", and works as a wikilink target. |
 
 For all page-name values, `[[Page|Display]]` is reduced to `Page`.
 
 ## Link resolution
 
-`resolveLink` is used for wikilinks, `categories` and `featured with`:
+`resolveLink` is used for wikilinks and `featured with`:
 
 1. If the target contains `/`, it is **path-qualified** and matches the file at exactly that path from the vault root, case-insensitively: `topic/Trinity`, `topic/notes/Trinity`. There is no suffix matching.
 2. Otherwise the target is looked up in `fileMap`, which is keyed by the lowercased basename, the permalink, the alias name and the alias slug. A key also matches when its hyphens are read as spaces (`[[foo bar]]` finds the key `foo-bar`).
 3. When several candidates match, notes pages are dropped unless nothing else matches. Then the candidate in the source page's own folder wins (a notes page counts as in its page's folder), then the one in `topic/`, then the one at the vault root. When a tiebreak decides, a warning asks you to qualify the link. If none applies, the result is ambiguous: a warning is logged and the link is rendered as a `broken` span.
 
-`categories` values are resolved as if written from `category/`.
 
 ## Per-page pipeline
 
@@ -106,7 +105,7 @@ Steps 1–6 are plain regex passes over the raw Markdown. They also apply inside
 - `bodyClasses`: the URL's path segments, or `["home"]` for `/`.
 - `nsLabel`: the page's folder name, capitalised (`Topic`, `Commentary`), or `Article` for root pages. A notes page uses its page's folder.
 - `isNote`: true for a notes page. `notePage` is `{url}` of its page (null when the page doesn't exist or is hidden). `noteUrl` is a page's notes URL, or null.
-- `categories`, `subcategories`, `pages`: arrays of `{title,url}`. `subcategories` holds members that have members of their own, and `pages` holds the rest.
+- `categories`, `subcategories`, `pages`: arrays of `{title,url}`. `subcategories` holds members that are category pages, and `pages` holds the rest.
 - `featured`: true only for `featured: true`.
 - `featuredWith`: the raw page-name string, or null.
 - `backlinkUrl`: null on generated pages (indexes, search, random, backlinks pages).
@@ -116,8 +115,8 @@ Steps 1–6 are plain regex passes over the raw Markdown. They also apply inside
 - **Backlinks**: `/{url}/backlinks` (or `/backlinks` for `/`) for every non-hidden page. Sources are all non-hidden pages whose wikilinks resolve to the page. This is counted on partial-expanded Markdown, *before* comment stripping or EJS. It counts self-links and links inside `%%comments%%`.
 - **Alias redirects**: written after the pages, with no collision check.
 - **Indexes**:
-  - `/index/alphabetical`: pages that are not hidden, unlisted, notes pages or category pages with members, plus their aliases.
-  - `/index/categorical`: a flat list of top-level category pages only. Those are category pages that are not themselves in a category.
+  - `/index/alphabetical`: pages that are not hidden, unlisted, notes pages or category pages, plus their aliases.
+  - `/index/categorical`: a flat list of top-level category pages only: category pages that are not hidden, not unlisted (so not empty) and not themselves in a category.
   - `/index/featured`
   - `/index/drafts`
 
