@@ -1,12 +1,12 @@
 {
-  "name": "press",
-  "version": "0.3.2",
+  "name": "tsgen",
+  "version": "0.3.3",
   "private": true,
   "description": "Bespoke static site generator for totascriptura.org",
   "type": "module",
   "license": "MIT",
   "bin": {
-    "press": "build.js"
+    "tsgen": "build.js"
   },
   "files": [
     "build.js",

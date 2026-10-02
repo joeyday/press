@@ -16,11 +16,11 @@ import { writeSearch } from "./lib/pages/search.js";
 import { renderBody } from "./lib/render.js";
 import { copyAssets, loadVault } from "./lib/vault.js";
 
-// The vault (content) is the working directory; the template ships with Press.
-// Output goes to ./dist unless PRESS_OUT names another directory (local use
+// The vault (content) is the working directory; the template ships with tsgen.
+// Output goes to ./dist unless TSGEN_OUT names another directory (local use
 // only, e.g. to keep build output out of the iCloud-synced vault; CI sets nothing).
-const OUTPUT_DIR = process.env.PRESS_OUT
-  ? path.resolve(process.env.PRESS_OUT)
+const OUTPUT_DIR = process.env.TSGEN_OUT
+  ? path.resolve(process.env.TSGEN_OUT)
   : "dist";
 const TEMPLATE_DIR = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -160,12 +160,12 @@ async function build() {
 }
 
 // ─── CLI ──────────────────────────────────────────────────────────────────────
-// press [build]  build the site (what CI runs)
-// press serve    build, then serve the output locally (see serve.js)
+// tsgen [build]  build the site (what CI runs)
+// tsgen serve    build, then serve the output locally (see serve.js)
 
 const command = process.argv[2] ?? "build";
 if (command !== "build" && command !== "serve") {
-  console.error("Usage: press [build|serve]");
+  console.error("Usage: tsgen [build|serve]");
   process.exit(1);
 }
 

@@ -104,7 +104,7 @@ export function serve(dir) {
     server.once("error", (err) => {
       reject(
         err.code === "EADDRINUSE"
-          ? new Error(`Port ${PORT} is already in use (is another press serve running?)`)
+          ? new Error(`Port ${PORT} is already in use (is another tsgen serve running?)`)
           : err,
       );
     });

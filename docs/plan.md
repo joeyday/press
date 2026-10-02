@@ -1,28 +1,28 @@
 # Plan
 
-Living roadmap for Press. Update it as work lands; delete finished items rather than ticking them.
+Living roadmap for tsgen. Update it as work lands; delete finished items rather than ticking them.
 
-## 0. Finish the split: Press as a git-installed CLI (DONE 2026-10-01)
+## 0. Finish the split: tsgen as a git-installed CLI (DONE 2026-10-01)
 
-The content repo is `joeyday/totascriptura.org`. Both repos are public, so no CI token is needed. The content repo depends on Press as a git dependency. The lockfile pins the exact Press commit, so work on Press can't reach the live site until the content repo deliberately bumps it.
+The content repo is `joeyday/totascriptura.org`. Both repos are public, so no CI token is needed. The content repo depends on tsgen as a git dependency. The lockfile pins the exact tsgen commit, so work on tsgen can't reach the live site until the content repo deliberately bumps it.
 
-**Press (done in v0.1.0):**
+**tsgen (done in v0.1.0):**
 - Added `bin`, a shebang, `files`, `engines` and `private: true`.
 - `template/` moved here and is resolved from `import.meta.url`. The dead `embed.ejs` was dropped.
 - Verified by installing the packed tarball into a copy of the vault and running `npm run build`: the output was identical to the baseline.
 
 **Content repo (done in `fdc471e`; deployed successfully, live pages match the baseline):**
-- Replace the nine dependencies with `"press": "github:joeyday/press#v0.1.0"` (pinned to a tag) and add `"build": "press"`.
+- Replace the nine dependencies with `"tsgen": "github:joeyday/tota-scriptura-static-site-generator#v0.1.0"` (pinned to a tag) and add `"build": "tsgen"`.
 - Regenerate the lockfile.
 - Delete `build.js`, and `template/` if it moved.
 - Have `deploy.yml` run `npm ci && npm run build`, and bump Node 20 to 22, since 20 is end-of-life.
-- To bump Press later, change the tag and regenerate the lockfile (see `CLAUDE.md` → Releasing).
+- To bump tsgen later, change the tag and regenerate the lockfile (see `CLAUDE.md` → Releasing).
 
-**Added after v0.1.0:** the `PRESS_OUT` environment variable (output directory; default `dist`). Not yet released or tagged, and CI doesn't need it. `press serve` (a local preview server, `serve.js`) was added too. Planned next: possibly an incremental rebuild / watch mode, because Joey now expects to run builds locally.
+**Added after v0.1.0:** the `TSGEN_OUT` environment variable (output directory; default `dist`). Not yet released or tagged, and CI doesn't need it. `tsgen serve` (a local preview server, `serve.js`) was added too. Planned next: possibly an incremental rebuild / watch mode, because Joey now expects to run builds locally.
 
 ## 1. Short-term goals (set 2026-10-01)
 
-Press is a bespoke, single-site tool. There are three goals: **(a)** split `build.js` into modules, **(b)** make the build much faster (aim for about half the current time), and **(c)** hardcode folder roles and other decisions that are currently generic.
+tsgen is a bespoke, single-site tool. There are three goals: **(a)** split `build.js` into modules, **(b)** make the build much faster (aim for about half the current time), and **(c)** hardcode folder roles and other decisions that are currently generic.
 
 ### Safety net (in place 2026-10-01)
 - `vault/` is a copy of the real vault: 318 `.md` files, 222 built pages, 616 output files.
@@ -156,7 +156,7 @@ Today the random pool is just the alphabetical lists (minus `category`), so `unl
 `reading/` becomes `summary/` (menu label "Summaries", nav tab "Summary page"). A summary page summarises the main arguments and Scripture citations of a book or article. Its notes page, like a commentary's, holds Joey's own observations and collected material. The code already expects `summary/`, so until the vault folder is renamed those five pages (all `hidden`) aren't in any list. `scripts/migrate-vault.mjs` renames the folder, rewrites `[[reading/…]]` links and renames the `Book notes` / `Article notes` categories to `Book summaries` / `Article summaries`. Those two categories still have no pages; their members are hidden, so the build is silent about it.
 
 ### Template: stays in the vault or moves here?
-`template/` holds the layout, CSS, JS and fonts. Content editors probably shouldn't need to touch it. If it moves to Press, the vault becomes pure content.
+`template/` holds the layout, CSS, JS and fonts. Content editors probably shouldn't need to touch it. If it moves to tsgen, the vault becomes pure content.
 
 ## 2. Verified bugs and surprises
 

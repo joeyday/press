@@ -1,4 +1,4 @@
-# Press
+# Tota Scriptura Static Site Generator
 
 The bespoke static site generator for [totascriptura.org](https://totascriptura.org). It turns the site's Obsidian vault into a static HTML site for GitHub Pages. `build.js` is the entry point, the generator proper lives in `lib/`, and the layout, CSS and fonts live in `template/`.
 
@@ -6,21 +6,21 @@ This reference was written from the code as of October 2026. It replaces the Rep
 
 ## Running
 
-The content repo installs Press as a git dependency and runs its `press` command from the vault root:
+The content repo installs tsgen as a git dependency and runs its `tsgen` command from the vault root:
 
 ```jsonc
 // totascriptura.org/package.json
-"scripts": { "build": "press" },
-"devDependencies": { "press": "github:joeyday/press#v0.3.2" }
+"scripts": { "build": "tsgen" },
+"devDependencies": { "tsgen": "github:joeyday/tota-scriptura-static-site-generator#v0.3.3" }
 ```
 
 Commands (run from the vault root):
-- `press` or `press build`: build the site (what CI runs).
-- `press serve`: build, then serve the output at <http://localhost:4000/> until Ctrl-C. `serve.js` mimics GitHub Pages: `/foo/` serves `foo/index.html`, `/foo` redirects to `/foo/`, and unmatched URLs get `404.html` with a 404 status. It binds to localhost, the port is hardcoded, and it doesn't rebuild on changes.
+- `tsgen` or `tsgen build`: build the site (what CI runs).
+- `tsgen serve`: build, then serve the output at <http://localhost:4000/> until Ctrl-C. `serve.js` mimics GitHub Pages: `/foo/` serves `foo/index.html`, `/foo` redirects to `/foo/`, and unmatched URLs get `404.html` with a 404 status. It binds to localhost, the port is hardcoded, and it doesn't rebuild on changes.
 
-For a local `press` command, run `npm link` once in the Press repo. During Press development you can also run `cd vault && node ../build.js` (see `CLAUDE.md`).
+For a local `tsgen` command, run `npm link` once in the tsgen repo. During tsgen development you can also run `cd vault && node ../build.js` (see `CLAUDE.md`).
 
-The vault scan, `abbreviations.json`, `alt-text.json` are resolved from the **working directory**. Output goes to `./dist`, or to the directory named by the `PRESS_OUT` environment variable if set. CI sets nothing; locally it keeps build output out of the iCloud-synced vault (for example `export PRESS_OUT="$HOME/Projects/press/out"` in `~/.zshrc`). The template is resolved from Press's own directory.
+The vault scan, `abbreviations.json`, `alt-text.json` are resolved from the **working directory**. Output goes to `./dist`, or to the directory named by the `TSGEN_OUT` environment variable if set. CI sets nothing; locally it keeps build output out of the iCloud-synced vault (for example `export TSGEN_OUT="$HOME/Projects/tota-scriptura-static-site-generator/out"` in `~/.zshrc`). The template is resolved from tsgen's own directory.
 
 `dist/` is **not** cleaned before a build. Delete it yourself for a clean build. (See `docs/plan.md`.)
 
@@ -28,7 +28,7 @@ Dependencies: `gray-matter`, `markdown-it`, `markdown-it-footnote`, `markdown-it
 
 ## Inputs
 
-`template/` (in Press) holds `layout.ejs` and the site's CSS, JS and fonts. Its assets are copied to `dist/asset/` along with the vault's.
+`template/` (in tsgen) holds `layout.ejs` and the site's CSS, JS and fonts. Its assets are copied to `dist/asset/` along with the vault's.
 
 The rest come from the vault:
 
