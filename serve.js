@@ -4,16 +4,9 @@ import path from "path";
 
 // Local preview server that mimics GitHub Pages: /foo/ serves foo/index.html,
 // /foo redirects to /foo/ when foo is a directory, and anything unmatched
-// serves 404.html with a 404 status.
-//
-// Reachable at http://press.lvh.me/ (lvh.me resolves every subdomain to
-// 127.0.0.1). Port 80 needs no root on macOS when bound to all interfaces,
-// but not when bound to 127.0.0.1 alone, so we bind 0.0.0.0 and then drop any
-// connection that isn't from this machine, keeping the preview local-only.
+// serves 404.html with a 404 status. Bound to localhost only.
 
-const PORT = 80;
-const HOSTNAME = "press.lvh.me";
-const LOOPBACK = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+const PORT = 4000;
 
 const CONTENT_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -107,10 +100,6 @@ export function serve(dir) {
     }
   });
 
-  server.on("connection", (socket) => {
-    if (!LOOPBACK.has(socket.remoteAddress)) socket.destroy();
-  });
-
   return new Promise((resolve, reject) => {
     server.once("error", (err) => {
       reject(
@@ -119,8 +108,8 @@ export function serve(dir) {
           : err,
       );
     });
-    server.listen(PORT, "0.0.0.0", () => {
-      console.log(`Serving ${root} at http://${HOSTNAME}/  (Ctrl-C to stop)`);
+    server.listen(PORT, "127.0.0.1", () => {
+      console.log(`Serving ${root} at http://localhost:${PORT}/  (Ctrl-C to stop)`);
       resolve(server);
     });
   });
