@@ -524,13 +524,20 @@ main {
         }
     }
 
-    /* Namespace menu on the alphabetical indexes. Styled like .quick-nav. */
+    /* Namespace menu on the alphabetical indexes. Type like .quick-nav, box like .categories. */
     .namespace-menu {
         font-size: 1rem;
         font-family: var(--font-secondary);
-        margin: 0 0 1rem;
-        padding: 0;
+        background-color: var(--color-main-tint-background);
+
+        display: block;
+        width: fit-content;
+        margin: 0 auto 1rem;
+        padding: 0.25em 0.75em;
         text-align: center;
+        text-wrap: pretty;
+
+        border-radius: 0.25em;
 
         li {
             display: inline;

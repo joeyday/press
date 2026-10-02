@@ -11,7 +11,7 @@ The content repo installs Press as a git dependency and runs its `press` command
 ```jsonc
 // totascriptura.org/package.json
 "scripts": { "build": "press" },
-"devDependencies": { "press": "github:joeyday/press#v0.3.0" }
+"devDependencies": { "press": "github:joeyday/press#v0.3.1" }
 ```
 
 Commands (run from the vault root):
