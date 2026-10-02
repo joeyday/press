@@ -55,7 +55,7 @@ Keys are matched case-insensitively for every property below. The template, howe
 |---|---|
 | `title` | Display title. Defaults to the filename without `.md`. |
 | `permalink` | URL slug (see above). |
-| `hidden` | No page is generated. The content stays embeddable. Hidden pages are left out of every index, search, the random pool, backlinks, asides and categories, and links to them get the `broken` class. *Their `aliases` still produce redirect stubs.* |
+| `hidden` | No page is generated. Hidden pages are left out of every index, search, the random pool, backlinks, asides and categories, and links to them get the `broken` class. *Their `aliases` still produce redirect stubs.* |
 | `unlisted` | The page is built and links to it count as valid. It is left out of all index pages (including the Scripture index), search, the random pool, featured/featured-with, and category membership. It still takes part in asides and backlinks. |
 | `draft` | Listed on `/index/drafts`. Links to it get the `draft` class. |
 | `featured` | Listed on `/index/featured`. Gets a star on `/index/alphabetical`. Links to it get the `featured` class. |
@@ -78,14 +78,14 @@ For all page-name values, `[[Page|Display]]` is reduced to `Page`.
 
 For each non-hidden page, in order:
 
-1. **Embeds**: `{{name}}`, `{{[[name]]}}` and `{{name|arg1|arg2}}` are replaced by the named file's body. A bare name is looked up by basename only. Unlike links, it ignores aliases and permalinks and has no root tiebreaker, so any shared basename makes it ambiguous. A path-qualified name goes through `resolveLink`. Inside the embedded text, `{{1}}`… are replaced by the arguments, unfilled ones become empty, `{{$args}}` becomes the arguments joined by `, `, and `{{$n}}` becomes the argument count. Embeds are expanded recursively, and a circular embed is replaced by a comment with a warning. A `|` inside `[[…]]` does not split arguments. A bare numeric `{{3}}` anywhere becomes empty.
+1. **Partials**: `{{name}}`, `{{[[name]]}}` and `{{name|arg1|arg2}}` are replaced by the body of `partial/name.md`. Only the `partial/` folder (flat, no subfolders) is consulted. The name is matched by basename, case-insensitively, with no path syntax, aliases or permalinks. Everything in `partial/` is a partial and never a page: no frontmatter is read from it (any that is present is stripped and ignored), it is not in the link maps, and it has no URL, alias redirects or backlinks. Inside the partial's text, `{{1}}`… are replaced by the arguments, unfilled ones become empty, `{{$args}}` becomes the arguments joined by `, `, and `{{$n}}` becomes the argument count. Partials are expanded recursively, and a circular partial is replaced by a comment with a warning. A `|` inside `[[…]]` does not split arguments. A bare numeric `{{3}}` anywhere becomes empty.
 2. **Wikilinks**: `[[Target]]` and `[[Target|Text]]` become Markdown links, or `<span class="broken">` when unresolved. The link text is the raw inner text, not the target's title. A `.md` suffix is stripped. A leading `!` on a non-image wikilink is ignored. `#heading` fragments are not supported and produce a broken link.
    Image targets (by extension) are looked up in the asset map by **bare filename only**:
    - `[[img.png]]` becomes a link.
    - `![[img.png]]` becomes `<figure><img alt="img.png"></figure>`.
    - `![[img.png|Alt]]` sets the alt text.
    - `![[img.png|300]]` and `|300x150` set the dimensions.
-3. **EJS**: the whole page body is rendered as an EJS template with `frontmatter`, `contentMap`, `fileMap` and `imageMap`. If rendering fails, the body is replaced with an HTML comment and a warning is logged.
+3. **EJS**: the whole page body is rendered as an EJS template with `frontmatter`, `fileMap` and `imageMap`. If rendering fails, the body is replaced with an HTML comment and a warning is logged.
 4. **Comments**: `%%…%%` is stripped.
 5. **Small text**: `~text~` becomes `<small>`.
 6. **Fenced-div attribute protection**: `::: {…}` attributes are protected from `markdown-it-attrs`.
@@ -110,7 +110,7 @@ Steps 1–6 are plain regex passes over the raw Markdown. They also apply inside
 
 ## Generated pages
 
-- **Backlinks**: `/{url}/backlinks` (or `/backlinks` for `/`) for every non-hidden page. Sources are all non-hidden pages whose wikilinks resolve to the page. This is counted on embed-expanded Markdown, *before* comment stripping or EJS. It counts self-links and links inside `%%comments%%`.
+- **Backlinks**: `/{url}/backlinks` (or `/backlinks` for `/`) for every non-hidden page. Sources are all non-hidden pages whose wikilinks resolve to the page. This is counted on partial-expanded Markdown, *before* comment stripping or EJS. It counts self-links and links inside `%%comments%%`.
 - **Alias redirects**: written after the pages, with no collision check.
 - **Indexes**:
   - `/index/alphabetical`: pages that are not hidden, unlisted, asides or category pages with members, plus their aliases.

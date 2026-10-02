@@ -60,7 +60,7 @@ These need measurement before we commit to them.
 - **In-memory post-processing, written once.** Removes about 9 reads and up to 9 writes per page, plus the re-read for Scripture collection. This is probably the biggest win.
 - **Compile `layout.ejs` once.** Today `ejs.render` recompiles it for every page, backlinks page and index.
 - **Skip body EJS when the source has no `<%`.** Better still, drop body EJS entirely if the only user is a partial.
-- **Resolve embeds and wikilinks once per page.** The backlinks pre-pass currently repeats that work for the main render. Record outgoing links during the single pass.
+- **Expand partials and resolve wikilinks once per page.** The backlinks pre-pass currently repeats that work for the main render. Record outgoing links during the single pass.
 - **Remove O(n) scans in link resolution.** That's the `resolveFileMapKey` key scan, the path-qualified filter, and the root tiebreaker's `.some`. Precomputed maps or hardcoded folders can replace them.
 - **Bible refs: skip text nodes that contain no digit.** Also share one parse between the linker and the collector, and fix the case-insensitive matching (`gi`) while we're there. The huge alternation regex currently runs twice per text node.
 - **Compile the abbreviation regex once** instead of once per file.
@@ -72,7 +72,7 @@ These need measurement before we commit to them.
 build.js                orchestrator: load → model → resolve → render+post → generated pages
 lib/vault.js            fixed folders → page records (frontmatter, urls)
 lib/links.js            link resolution, wikilinks
-lib/embeds.js
+lib/partials.js
 lib/markdown.js         markdown-it setup, %%, ~small~, fenced attrs
 lib/model.js            aliases, asides, categories, featured, backlinks
 lib/layout.js           compiled layout, classifyLinks
@@ -102,7 +102,7 @@ Usage counts:
 - **Duplicate basenames:** 92 pairs, almost all `notes/X` ↔ `topic/X`. That is why **239 of 522 wikilinks are path-qualified**.
 - **No `[[…#heading]]` links.**
 - **EJS appears only in `Colophon.md` and `partial/mt.md`.**
-- **228 embeds.** 44 files use arguments or placeholders, so the argument machinery is in real use.
+- **228 partial uses.** 44 files use arguments or placeholders, so the argument machinery is in real use.
 - **`permalink`** is used once (`Home page.md → home`).
 - Small text `~x~` appears in 139 files, `:::` containers in 16, and `%%` comments in 4.
 - `quick nav`, `stub` and `disambiguation` are presumably read by `layout.ejs`.
@@ -120,15 +120,20 @@ Joey to confirm each. The evidence comes from the survey above.
   - `Doubt`'s target is missing
 
   This would retire `aside of`.
-- **`partial/` is embed-only and never built.** This retires `hidden` there and fixes the two accidental pages. `hidden` is still used in `topic/` (34), `notes/` (15) and `reading/` (5), so we need to decide what it means outside `partial/`.
+- **`hidden` outside `partial/`.** It is still used in `topic/` (34), `notes/` (15) and `reading/` (5), so we need to decide what it means there. (`partial/` is now hardcoded as partials-only; see the next section.)
 - **Resolve folder-qualified links via a `folder/name` map**, replacing suffix matching. Bare names resolve to `topic/` (or the root) before `notes/`. The root-file tiebreaker and generic ambiguity logic can probably go.
 - **Hardcode the homepage** as `Home page.md`, and drop `permalink` and the home/index logic.
 - **Canonical lowercase frontmatter keys.** This drops `getFrontmatterValue` and fixes the `Title:` bug.
 - **Assets only from `image/` and `template/`**, which drops the whole-vault scan.
 - **`abbreviations.json` and `alt-text.json` become required** and are simply imported.
 - **Body EJS** could be replaced or retired, since only `Colophon.md` and `mt.md` use it.
-- **Keep embed arguments.** They are in real use.
+- **Keep partial arguments.** They are in real use.
 - **Unknown:** whether the fuzzy hyphen-as-space link matching is used. Measure it before removing.
+
+### Partials (done 2026-10-02)
+The feature is called **partials** everywhere in the code (`expandPartials`, `splitPartialArgs`, the `partials` map). Only `partial/` is consulted, by basename; everything in it is a partial and never a page, and its frontmatter is ignored, so the vault can drop it gradually. Verified byte-identical against the baseline.
+
+Still to do, deliberately held back because it changes `dist/`: rename the HTML comments `<!-- embed not found: x -->`, `<!-- circular embed: x -->` to say "partial". Once the refactor ties out, do this as its own commit. `![[image]]` is Obsidian's image embed, a different feature, and keeps its name. The vault still has seven `{{[[violation-goals]]}}`/`{{[[draft]]}}` references to partials that don't exist; they sit in hidden pages, so they are silent.
 
 ### Template: stays in the vault or moves here?
 `template/` holds the layout, CSS, JS and fonts. Content editors probably shouldn't need to touch it. If it moves to Press, the vault becomes pure content.
@@ -143,7 +148,7 @@ Each item below was reproduced on 2026-10-01 in a scratch vault. None are fixed 
 - **"Romans 3, 5"** is read as Romans 3:5, not chapters 3 and 5. The linker and the Scripture collector agree, so this is at least consistent.
 - **Uppercase words read as Roman numerals:** `MD`, `DC`, `MIX`, `CD`, `CV`, `LI`, …
 - **Heading-ID entities:** `## Faith & Works` gets the id `faith-andamp-works` (slugify sees `&amp;`).
-- **`~small~`, `%%comments%%`, wikilinks and embeds are processed inside code spans and blocks.** `` `~x~` `` renders as literal `<small>x</small>`.
+- **`~small~`, `%%comments%%`, wikilinks and partials are processed inside code spans and blocks.** `` `~x~` `` renders as literal `<small>x</small>`.
 - **Backlinks count links inside `%%comments%%`** and self-links. The pre-pass runs before comment stripping.
 - **Capitalised frontmatter keys** such as `Title:` give an empty `frontmatter.title` in the template.
 - **Hidden pages' aliases still produce redirect stubs** to a non-existent page.

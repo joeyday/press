@@ -1477,7 +1477,7 @@ function resolveFileMapKey(target, fileMap) {
 }
 
 /**
- * Resolve a wikilink/embed target to a single URL.
+ * Resolve a wikilink target to a single URL.
  * Returns:
  *   { url: string }        — exactly one match found
  *   { ambiguous: true }    — two or more matches (bare name collision)
@@ -1534,10 +1534,10 @@ function resolveLink(target, fileMap, filesToProcess, excludeUrl = null) {
   return { ambiguous: true };
 }
 
-// Split an embed args string on | separators, but treat [[...]] as atomic
+// Split a partial's args string on | separators, but treat [[...]] as atomic
 // so pipes inside wikilinks (display text) are not treated as separators.
 // e.g. "[[topic/Trinity|Trinity]]|simple" → ["[[topic/Trinity|Trinity]]", "simple"]
-function splitEmbedArgs(argsStr) {
+function splitPartialArgs(argsStr) {
   const args = [];
   let current = "";
   let depth = 0;
@@ -1564,16 +1564,9 @@ function splitEmbedArgs(argsStr) {
   return args;
 }
 
-function resolveEmbeds(
-  text,
-  contentMap,
-  {
-    seen = new Set(),
-    fileMap = null,
-    filesToProcess = null,
-    contentMapByUrl = null,
-  } = {},
-) {
+// Expand {{name}} / {{name|arg1|arg2}} using the files in partial/. Names are
+// looked up by basename only (case-insensitive); there is no path syntax.
+function expandPartials(text, partials, seen = new Set()) {
   return text.replace(
     /\{\{([^}|]+?)(?:\|([^}]*))?\}\}/g,
     (match, name, argsStr) => {
@@ -1584,67 +1577,32 @@ function resolveEmbeds(
       if (/^\d+$/.test(key)) return "";
 
       if (seen.has(key)) {
-        console.warn(`Warning: Circular embed detected — "${name}"`);
+        console.warn(`Warning: Circular partial detected — "${name}"`);
         return `<!-- circular embed: ${name} -->`;
       }
 
-      let embedContent;
-
-      if (name.includes("/") && fileMap && filesToProcess && contentMapByUrl) {
-        const resolved = resolveLink(name, fileMap, filesToProcess);
-        if (resolved.url) {
-          embedContent = contentMapByUrl[resolved.url];
-          if (embedContent === undefined || embedContent === null) {
-            console.warn(`Warning: Embed not found — "${name}"`);
-            return `<!-- embed not found: ${name} -->`;
-          }
-        } else if (resolved.ambiguous) {
-          console.warn(
-            `Warning: Ambiguous embed — "${name}" matches multiple files`,
-          );
-          return `<!-- ambiguous embed: ${name} -->`;
-        } else {
-          console.warn(`Warning: Embed not found — "${name}"`);
-          return `<!-- embed not found: ${name} -->`;
-        }
-      } else {
-        const contentEntries = contentMap[key];
-        if (!contentEntries || contentEntries.length === 0) {
-          console.warn(`Warning: Embed not found — "${name}"`);
-          return `<!-- embed not found: ${name} -->`;
-        }
-        if (contentEntries.length > 1) {
-          console.warn(
-            `Warning: Ambiguous embed — "${name}" matches ${contentEntries.length} files`,
-          );
-          return `<!-- ambiguous embed: ${name} -->`;
-        }
-        embedContent = contentEntries[0];
+      let partial = partials[key];
+      if (partial === undefined) {
+        console.warn(`Warning: Partial not found — "${name}"`);
+        return `<!-- embed not found: ${name} -->`;
       }
 
-      const args = argsStr ? splitEmbedArgs(argsStr) : [];
+      const args = argsStr ? splitPartialArgs(argsStr) : [];
 
       for (let i = 0; i < args.length; i++) {
-        embedContent = embedContent.replace(
+        partial = partial.replace(
           new RegExp(`\\{\\{${i + 1}\\}\\}`, "g"),
           args[i],
         );
       }
 
       // Replace any remaining unfilled {{N}} placeholders with empty string
-      embedContent = embedContent.replace(/\{\{\d+\}\}/g, "");
+      partial = partial.replace(/\{\{\d+\}\}/g, "");
 
-      embedContent = embedContent.replace(/\{\{\$args\}\}/g, args.join(", "));
-      embedContent = embedContent.replace(/\{\{\$n\}\}/g, String(args.length));
+      partial = partial.replace(/\{\{\$args\}\}/g, args.join(", "));
+      partial = partial.replace(/\{\{\$n\}\}/g, String(args.length));
 
-      const newSeen = new Set(seen);
-      newSeen.add(key);
-      return resolveEmbeds(embedContent, contentMap, {
-        seen: newSeen,
-        fileMap,
-        filesToProcess,
-        contentMapByUrl,
-      });
+      return expandPartials(partial, partials, new Set(seen).add(key));
     },
   );
 }
@@ -1682,7 +1640,7 @@ async function build() {
 
   const fileMap = {};
   const titleMap = {};
-  const contentMap = {};
+  const partials = {}; // basename (lowercase) → body, from partial/
   const filesToProcess = [];
 
   const imageMap = {};
@@ -1730,6 +1688,12 @@ async function build() {
 
     const baseName = path.basename(fileName, ".md");
 
+    // partial/ holds only partials: never pages, and any frontmatter is ignored.
+    if (relDir === "partial") {
+      partials[baseName.toLowerCase().trim()] = parsed.content;
+      continue;
+    }
+
     let permalink = getFrontmatterValue(parsed.data, "permalink");
     if (typeof permalink === "string") {
       permalink = permalink.replace(/^\/+/, "");
@@ -1773,8 +1737,6 @@ async function build() {
       parsed.data.title = baseName;
     }
     titleMap[key] = title;
-    if (!contentMap[key]) contentMap[key] = [];
-    contentMap[key].push(parsed.content);
 
     const hidden = !!getFrontmatterValue(parsed.data, "hidden");
     const rawAliases = getFrontmatterValue(parsed.data, "aliases");
@@ -2074,13 +2036,8 @@ async function build() {
     ),
   );
 
-  const contentMapByUrl = {};
-  for (const fileInfo of filesToProcess) {
-    contentMapByUrl[fileInfo.finalUrlPath] = fileInfo.parsed.content;
-  }
-
   // ── Backlinks pre-pass ───────────────────────────────────────────────────────
-  // Scan every non-hidden page's wikilinks (after embed resolution, matching the
+  // Scan every non-hidden page's wikilinks (after partial expansion, matching the
   // same resolveLink logic used in the main loop) and build a map of
   //   targetUrl → [{title, url}]   (sorted alphabetically by title)
   // This must run BEFORE the main render loop so each page can receive its
@@ -2092,11 +2049,7 @@ async function build() {
     if (fileInfo.hidden) continue;
     const sourceUrl = fileInfo.finalUrlPath;
 
-    const fullMarkdown = resolveEmbeds(fileInfo.parsed.content, contentMap, {
-      fileMap,
-      filesToProcess,
-      contentMapByUrl,
-    });
+    const fullMarkdown = expandPartials(fileInfo.parsed.content, partials);
 
     fullMarkdown.replace(/(?:!?)\[\[(.*?)\]\]/g, (_match, inner) => {
       let target = inner;
@@ -2144,11 +2097,7 @@ async function build() {
   for (const fileInfo of filesToProcess) {
     if (fileInfo.hidden) continue;
 
-    let markdownContent = resolveEmbeds(fileInfo.parsed.content, contentMap, {
-      fileMap,
-      filesToProcess,
-      contentMapByUrl,
-    });
+    let markdownContent = expandPartials(fileInfo.parsed.content, partials);
 
     markdownContent = markdownContent.replace(
       /(!?)\[\[(.*?)\]\]/g,
@@ -2204,7 +2153,6 @@ async function build() {
     try {
       markdownContent = ejs.render(markdownContent, {
         frontmatter: fileInfo.parsed.data,
-        contentMap,
         fileMap,
         imageMap,
       });

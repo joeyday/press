@@ -53,10 +53,10 @@ To release:
 `build()` does the following, in order:
 
 1. Copies assets flat to `dist/asset/`.
-2. Parses every `.md` file into `filesToProcess`, and builds `fileMap`, `contentMap` and `titleMap`.
+2. Parses every `.md` file into `filesToProcess`, and builds `fileMap` and `titleMap`. Files in `partial/` go to a separate `partials` map instead and are never pages.
 3. Derives the relationship maps: aliases, featured, `featured with`, asides, category members, all pages.
 4. Runs a backlinks pre-pass.
-5. Renders each page: embeds → wikilinks → EJS → `%%` strip → `~small~` → markdown-it → layout → `classifyLinks`.
+5. Renders each page: partials → wikilinks → EJS → `%%` strip → `~small~` → markdown-it → layout → `classifyLinks`.
 6. Writes the generated pages: alias redirects, backlinks pages, the four indexes, search and random.
 7. Re-reads every HTML file in `dist/` for the string-rewriting post-passes: heading IDs → Scripture collection and index pages → Bible-ref linker → abbreviations → initials → Roman numerals → divine names → ellipses → alt text.
 
@@ -64,6 +64,6 @@ Every post-pass uses the same hand-rolled tag-splitter-plus-skip-stack pattern (
 
 Key helpers:
 - `resolveLink`: path-qualified matching, a root-file tiebreaker, and `excludeUrl`.
-- `resolveEmbeds`: recursive, with positional arguments.
+- `expandPartials`: recursive, with positional arguments. Looks up `partial/` basenames only.
 - `getFrontmatterValue`: case-insensitive key lookup.
 - `sortableTitle`: ignores leading articles when sorting.
