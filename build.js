@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import matter from "gray-matter";
+import { walkHtml, mapText } from "./lib/html/walk.js";
 
 // ─── Bible Reference Auto-Linker ──────────────────────────────────────────────
 
@@ -391,73 +392,20 @@ const BLOCK_TAGS = new Set([
 ]);
 
 function linkBibleRefs(html) {
-  // Split HTML into raw-markup chunks and plain-text chunks.
-  // Use a stack to correctly track nested skip tags (e.g. <a><code>…</code></a>).
-  const result = [];
-  // Regex to find HTML tags (opening, closing, self-closing, comments, CDATA)
-  const TAG_RE =
-    /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\/?([a-zA-Z][a-zA-Z0-9]*)[^>]*>/g;
-
-  // Stack of skip-tag names currently open
-  const skipStack = [];
   // Shared continuation-ref context; reset at every block boundary
   const ctxState = { lastCwms: null, lastChapter: null, translation: "ESV" };
-  let lastIndex = 0;
-
-  let m;
-  TAG_RE.lastIndex = 0;
-  while ((m = TAG_RE.exec(html)) !== null) {
-    const tagFull = m[0];
-    const tagName = m[1] ? m[1].toLowerCase() : null;
-    const before = html.slice(lastIndex, m.index);
-
-    // Handle text before this tag
-    if (before) {
-      if (skipStack.length === 0) {
-        result.push(processPlainText(before, ctxState));
-      } else {
-        result.push(before);
+  return mapText(
+    html,
+    SKIP_TAGS,
+    (text) => processPlainText(text, ctxState),
+    (tagName) => {
+      if (tagName && BLOCK_TAGS.has(tagName)) {
+        ctxState.lastCwms = null;
+        ctxState.lastChapter = null;
+        ctxState.translation = "ESV";
       }
-    }
-
-    // Reset continuation context at block boundaries (opening or closing tag)
-    if (tagName && BLOCK_TAGS.has(tagName)) {
-      ctxState.lastCwms = null;
-      ctxState.lastChapter = null;
-      ctxState.translation = "ESV";
-    }
-
-    // Update skip stack based on tag type
-    if (tagName && SKIP_TAGS.has(tagName)) {
-      if (tagFull.startsWith("</")) {
-        // Closing tag: pop matching tag from the stack top
-        if (
-          skipStack.length > 0 &&
-          skipStack[skipStack.length - 1] === tagName
-        ) {
-          skipStack.pop();
-        }
-      } else if (!tagFull.endsWith("/>")) {
-        // Opening (non-self-closing) tag: push onto stack
-        skipStack.push(tagName);
-      }
-    }
-
-    result.push(tagFull);
-    lastIndex = m.index + tagFull.length;
-  }
-
-  // Handle trailing text
-  const tail = html.slice(lastIndex);
-  if (tail) {
-    if (skipStack.length === 0) {
-      result.push(processPlainText(tail, ctxState));
-    } else {
-      result.push(tail);
-    }
-  }
-
-  return result.join("");
+    },
+  );
 }
 
 // ─── Scripture Index Collector ────────────────────────────────────────────────
@@ -633,9 +581,6 @@ function collectTextRefs(
 // happens during index generation).
 function collectBibleRefsFromHtml(html, pageUrl, pageTitle) {
   const refs = [];
-  const TAG_RE =
-    /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\/?([a-zA-Z][a-zA-Z0-9]*)[^>]*>/g;
-  const skipStack = [];
   const ctxState = { lastCwms: null, lastChapter: null };
 
   // Heading accumulation state (tracks the h2/h3 we're currently inside)
@@ -647,24 +592,14 @@ function collectBibleRefsFromHtml(html, pageUrl, pageTitle) {
   let currentSectionId = null;
   let currentSectionTitle = null;
 
-  let lastIndex = 0;
-  let m;
-  TAG_RE.lastIndex = 0;
-
-  while ((m = TAG_RE.exec(html)) !== null) {
-    const tagFull = m[0];
-    const tagName = m[1] ? m[1].toLowerCase() : null;
-    const before = html.slice(lastIndex, m.index);
-
-    if (before) {
-      if (pendingHeadingTag) {
-        // Inside a heading: accumulate text for the section title
-        pendingHeadingBuffer.push(before);
-      }
-      if (skipStack.length === 0) {
-        // Outside any skip context: collect Bible refs
+  walkHtml(html, SKIP_TAGS, {
+    onText(text, skipped) {
+      // Inside a heading: accumulate text for the section title
+      if (pendingHeadingTag) pendingHeadingBuffer.push(text);
+      // Outside any skip context: collect Bible refs
+      if (!skipped) {
         collectTextRefs(
-          before,
+          text,
           ctxState,
           refs,
           pageUrl,
@@ -673,74 +608,41 @@ function collectBibleRefsFromHtml(html, pageUrl, pageTitle) {
           currentSectionTitle,
         );
       }
-    }
+    },
+    onTag(tagName, tagFull) {
+      if (!tagName) return; // HTML comment or CDATA
 
-    if (!tagName) {
-      // HTML comment or CDATA — advance and continue
-      lastIndex = m.index + tagFull.length;
-      continue;
-    }
+      const isClose = tagFull.startsWith("</");
+      const isSelfClose = tagFull.endsWith("/>");
 
-    const isClose = tagFull.startsWith("</");
-    const isSelfClose = tagFull.endsWith("/>");
-
-    // Track h2/h3 section headings to provide fragment context for refs
-    if ((tagName === "h2" || tagName === "h3") && !isSelfClose) {
-      if (!isClose) {
-        // Opening heading: start collecting its text content
-        const idM = tagFull.match(/\bid\s*=\s*["']?([^"'\s>]+)["']?/);
-        pendingHeadingTag = tagName;
-        pendingHeadingId = idM ? idM[1] : null;
-        pendingHeadingBuffer = [];
-      } else if (pendingHeadingTag === tagName) {
-        // Closing heading: finalise the section context
-        currentSectionId = pendingHeadingId;
-        currentSectionTitle = pendingHeadingBuffer
-          .join("")
-          .replace(/<[^>]*>/g, "")
-          .trim();
-        pendingHeadingTag = null;
-        pendingHeadingId = null;
-        pendingHeadingBuffer = [];
-      }
-    }
-
-    // Reset continuation-ref context at every block boundary (opening or closing)
-    if (BLOCK_TAGS.has(tagName)) {
-      ctxState.lastCwms = null;
-      ctxState.lastChapter = null;
-    }
-
-    // Maintain skip stack (prevents collecting refs inside <a>, <code>, etc.)
-    if (SKIP_TAGS.has(tagName)) {
-      if (isClose) {
-        if (
-          skipStack.length > 0 &&
-          skipStack[skipStack.length - 1] === tagName
-        ) {
-          skipStack.pop();
+      // Track h2/h3 section headings to provide fragment context for refs
+      if ((tagName === "h2" || tagName === "h3") && !isSelfClose) {
+        if (!isClose) {
+          // Opening heading: start collecting its text content
+          const idM = tagFull.match(/\bid\s*=\s*["']?([^"'\s>]+)["']?/);
+          pendingHeadingTag = tagName;
+          pendingHeadingId = idM ? idM[1] : null;
+          pendingHeadingBuffer = [];
+        } else if (pendingHeadingTag === tagName) {
+          // Closing heading: finalise the section context
+          currentSectionId = pendingHeadingId;
+          currentSectionTitle = pendingHeadingBuffer
+            .join("")
+            .replace(/<[^>]*>/g, "")
+            .trim();
+          pendingHeadingTag = null;
+          pendingHeadingId = null;
+          pendingHeadingBuffer = [];
         }
-      } else if (!isSelfClose) {
-        skipStack.push(tagName);
       }
-    }
 
-    lastIndex = m.index + tagFull.length;
-  }
-
-  // Handle any trailing text after the last tag
-  const tail = html.slice(lastIndex);
-  if (tail && skipStack.length === 0) {
-    collectTextRefs(
-      tail,
-      ctxState,
-      refs,
-      pageUrl,
-      pageTitle,
-      currentSectionId,
-      currentSectionTitle,
-    );
-  }
+      // Reset continuation-ref context at every block boundary (opening or closing)
+      if (BLOCK_TAGS.has(tagName)) {
+        ctxState.lastCwms = null;
+        ctxState.lastChapter = null;
+      }
+    },
+  });
 
   return refs;
 }
@@ -855,8 +757,9 @@ function applyAltText(html, altMap) {
 
 // ─── End Alt Text Map ─────────────────────────────────────────────────────────
 
-// Tags whose content we skip entirely for abbreviation wrapping
-const ABBR_SKIP_TAGS = new Set(["abbr", "code", "pre", "script", "style"]);
+// Text inside these tags is left alone by the abbreviation, initials, Roman
+// numeral and divine-name passes.
+const WRAP_SKIP_TAGS = new Set(["abbr", "code", "pre", "script", "style"]);
 
 function wrapAbbreviations(html, abbrMap) {
   // Sort abbreviations longest-first to prevent prefix collisions
@@ -874,69 +777,14 @@ function wrapAbbreviations(html, abbrMap) {
   });
   const combinedRe = new RegExp(`(${parts.join("|")})`, "g");
 
-  // Split HTML into tag and text chunks, process only text nodes outside skip tags
-  const result = [];
-  const TAG_RE =
-    /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\/?([a-zA-Z][a-zA-Z0-9]*)[^>]*>/g;
-  const skipStack = [];
-  let lastIndex = 0;
-
-  let m;
-  TAG_RE.lastIndex = 0;
-  while ((m = TAG_RE.exec(html)) !== null) {
-    const tagFull = m[0];
-    const tagName = m[1] ? m[1].toLowerCase() : null;
-    const before = html.slice(lastIndex, m.index);
-
-    if (before) {
-      if (skipStack.length === 0) {
-        result.push(
-          before.replace(combinedRe, (match) => {
-            const expansion = abbrMap[match];
-            return expansion != null
-              ? `<abbr title="${expansion}">${match}</abbr>`
-              : `<abbr>${match}</abbr>`;
-          }),
-        );
-      } else {
-        result.push(before);
-      }
-    }
-
-    if (tagName && ABBR_SKIP_TAGS.has(tagName)) {
-      if (tagFull.startsWith("</")) {
-        if (
-          skipStack.length > 0 &&
-          skipStack[skipStack.length - 1] === tagName
-        ) {
-          skipStack.pop();
-        }
-      } else if (!tagFull.endsWith("/>")) {
-        skipStack.push(tagName);
-      }
-    }
-
-    result.push(tagFull);
-    lastIndex = m.index + tagFull.length;
-  }
-
-  const tail = html.slice(lastIndex);
-  if (tail) {
-    if (skipStack.length === 0) {
-      result.push(
-        tail.replace(combinedRe, (match) => {
-          const expansion = abbrMap[match];
-          return expansion != null
-            ? `<abbr title="${expansion}">${match}</abbr>`
-            : `<abbr>${match}</abbr>`;
-        }),
-      );
-    } else {
-      result.push(tail);
-    }
-  }
-
-  return result.join("");
+  return mapText(html, WRAP_SKIP_TAGS, (text) =>
+    text.replace(combinedRe, (match) => {
+      const expansion = abbrMap[match];
+      return expansion != null
+        ? `<abbr title="${expansion}">${match}</abbr>`
+        : `<abbr>${match}</abbr>`;
+    }),
+  );
 }
 
 // ─── End Abbreviation Expansion ───────────────────────────────────────────────
@@ -948,58 +796,10 @@ function wrapAbbreviations(html, abbrMap) {
 // are intentionally excluded (they require two or more such groups).
 const INITIALS_RE = /\b([A-Z]\.){2,}/g;
 
-// Same skip-set as abbreviations: never wrap inside existing <abbr>, code, etc.
-const INITIALS_SKIP_TAGS = new Set(["abbr", "code", "pre", "script", "style"]);
-
 function wrapInitials(html) {
-  const result = [];
-  const TAG_RE =
-    /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\/?([a-zA-Z][a-zA-Z0-9]*)[^>]*>/g;
-  const skipStack = [];
-  let lastIndex = 0;
-
-  let m;
-  TAG_RE.lastIndex = 0;
-  while ((m = TAG_RE.exec(html)) !== null) {
-    const tagFull = m[0];
-    const tagName = m[1] ? m[1].toLowerCase() : null;
-    const before = html.slice(lastIndex, m.index);
-
-    if (before) {
-      result.push(
-        skipStack.length === 0
-          ? before.replace(INITIALS_RE, "<abbr>$&</abbr>")
-          : before,
-      );
-    }
-
-    if (tagName && INITIALS_SKIP_TAGS.has(tagName)) {
-      if (tagFull.startsWith("</")) {
-        if (
-          skipStack.length > 0 &&
-          skipStack[skipStack.length - 1] === tagName
-        ) {
-          skipStack.pop();
-        }
-      } else if (!tagFull.endsWith("/>")) {
-        skipStack.push(tagName);
-      }
-    }
-
-    result.push(tagFull);
-    lastIndex = m.index + tagFull.length;
-  }
-
-  const tail = html.slice(lastIndex);
-  if (tail) {
-    result.push(
-      skipStack.length === 0
-        ? tail.replace(INITIALS_RE, "<abbr>$&</abbr>")
-        : tail,
-    );
-  }
-
-  return result.join("");
+  return mapText(html, WRAP_SKIP_TAGS, (text) =>
+    text.replace(INITIALS_RE, "<abbr>$&</abbr>"),
+  );
 }
 
 // ─── End Initials Wrapping ────────────────────────────────────────────────────
@@ -1035,68 +835,12 @@ const ROMAN_NUM_RE = new RegExp(
   "g",
 );
 
-// Tags whose content we skip entirely for Roman numeral wrapping
-const ROMAN_SKIP_TAGS = new Set(["abbr", "code", "pre", "script", "style"]);
-
 function wrapRomanNumerals(html) {
-  const result = [];
-  const TAG_RE =
-    /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\/?([a-zA-Z][a-zA-Z0-9]*)[^>]*>/g;
-  const skipStack = [];
-  let lastIndex = 0;
-
-  let m;
-  TAG_RE.lastIndex = 0;
-  while ((m = TAG_RE.exec(html)) !== null) {
-    const tagFull = m[0];
-    const tagName = m[1] ? m[1].toLowerCase() : null;
-    const before = html.slice(lastIndex, m.index);
-
-    if (before) {
-      if (skipStack.length === 0) {
-        result.push(
-          before.replace(ROMAN_NUM_RE, (match) =>
-            match.length >= 2
-              ? `<span class="roman-num">${match}</span>`
-              : match,
-          ),
-        );
-      } else {
-        result.push(before);
-      }
-    }
-
-    if (tagName && ROMAN_SKIP_TAGS.has(tagName)) {
-      if (tagFull.startsWith("</")) {
-        if (
-          skipStack.length > 0 &&
-          skipStack[skipStack.length - 1] === tagName
-        ) {
-          skipStack.pop();
-        }
-      } else if (!tagFull.endsWith("/>")) {
-        skipStack.push(tagName);
-      }
-    }
-
-    result.push(tagFull);
-    lastIndex = m.index + tagFull.length;
-  }
-
-  const tail = html.slice(lastIndex);
-  if (tail) {
-    if (skipStack.length === 0) {
-      result.push(
-        tail.replace(ROMAN_NUM_RE, (match) =>
-          match.length >= 2 ? `<span class="roman-num">${match}</span>` : match,
-        ),
-      );
-    } else {
-      result.push(tail);
-    }
-  }
-
-  return result.join("");
+  return mapText(html, WRAP_SKIP_TAGS, (text) =>
+    text.replace(ROMAN_NUM_RE, (match) =>
+      match.length >= 2 ? `<span class="roman-num">${match}</span>` : match,
+    ),
+  );
 }
 
 // ─── End Roman Numeral Wrapping ───────────────────────────────────────────────
@@ -1111,64 +855,17 @@ function wrapRomanNumerals(html) {
 
 const DIVINE_NAME_RE =
   /\b(LORD|GOD|YHWH|I AM( THAT I AM| WHAT I AM| WHO I AM)?|I WILL BE( THAT I WILL BE| WHAT I WILL BE| WHO I WILL BE)?)\b/g;
-const DIVINE_NAME_SKIP_TAGS = new Set([
-  "abbr",
-  "code",
-  "pre",
-  "script",
-  "style",
-]);
 
 function wrapDivineNames(html) {
-  const result = [];
-  const TAG_RE =
-    /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\/?([a-zA-Z][a-zA-Z0-9]*)[^>]*>/g;
-  const skipStack = [];
-  let lastIndex = 0;
-
-  const replace = (text) =>
+  return mapText(html, WRAP_SKIP_TAGS, (text) =>
     text.replace(DIVINE_NAME_RE, (match) => {
       const newMatch = match.replace(
         /\b(G|L|I\b)/g,
         `<span class="divine-name-initial">$1</span>`,
       );
       return `<span class="divine-name" data-name="${match}">${newMatch}</span>`;
-    });
-
-  let m;
-  TAG_RE.lastIndex = 0;
-  while ((m = TAG_RE.exec(html)) !== null) {
-    const tagFull = m[0];
-    const tagName = m[1] ? m[1].toLowerCase() : null;
-    const before = html.slice(lastIndex, m.index);
-
-    if (before) {
-      result.push(skipStack.length === 0 ? replace(before) : before);
-    }
-
-    if (tagName && DIVINE_NAME_SKIP_TAGS.has(tagName)) {
-      if (tagFull.startsWith("</")) {
-        if (
-          skipStack.length > 0 &&
-          skipStack[skipStack.length - 1] === tagName
-        ) {
-          skipStack.pop();
-        }
-      } else if (!tagFull.endsWith("/>")) {
-        skipStack.push(tagName);
-      }
-    }
-
-    result.push(tagFull);
-    lastIndex = m.index + tagFull.length;
-  }
-
-  const tail = html.slice(lastIndex);
-  if (tail) {
-    result.push(skipStack.length === 0 ? replace(tail) : tail);
-  }
-
-  return result.join("");
+    }),
+  );
 }
 
 // ─── End Divine Name Wrapping ─────────────────────────────────────────────────

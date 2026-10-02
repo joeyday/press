@@ -84,6 +84,8 @@ lib/bible/              books table, ref parser, linker, scripture-index collect
 lib/pages/*.js          indexes, search, random, backlinks, redirects, scripture
 ```
 
+**Progress (2026-10-02):** `lib/html/walk.js` is done. `walkHtml` and `mapText` replace the six hand-rolled tag-splitter copies (Bible-ref linker, Scripture collector, abbreviations, initials, Roman numerals, divine names), and the four wrapper passes share one `WRAP_SKIP_TAGS`. Verified byte-identical on `vault/` and on edge-case scratch vaults against the previous `build.js`. Next: move each pass into its own module under `lib/html/` and `lib/bible/`, still byte-identical, before touching the orchestrator.
+
 ### What the vault actually uses (survey 2026-10-01)
 
 | Folder | Files | Frontmatter seen |

@@ -11,6 +11,7 @@
   "files": [
     "build.js",
     "serve.js",
+    "lib/",
     "template/"
   ],
   "engines": {
