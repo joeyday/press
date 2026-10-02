@@ -126,7 +126,7 @@ Steps 1–6 are plain regex passes over the raw Markdown. They also apply inside
 
 ## Post-processing (every `.html` under `dist/`, in order)
 
-1. **Heading IDs**: every `<h2>`/`<h3>` without an `id` gets one, using slugified text and `-2`, `-3`… for duplicates. Existing IDs are kept and reserved first.
+1. **Heading IDs**: every `<h2>`/`<h3>` without an `id` gets one, using slugified text (HTML entities such as `&amp;` decoded first, so `Faith & Works` is `faith-and-works`) and `-2`, `-3`… for duplicates. Existing IDs are kept and reserved first.
 2. **Scripture collection and index generation**: see above. The index pages then get heading IDs and go through the remaining passes.
 3. **Bible reference linker**: turns references into `<a class="external bible-ref" href="https://ref.ly/{Abbr}{ch}[.{v}[-{v2}|-{ch2}.{v2}]|-{ch2}];{TRANS}">`.
    - Books are matched by full name or abbreviation, **case-insensitively**. The abbreviations come from the last entry of each book's `names` list in `BIBLE_BOOKS`.
@@ -143,4 +143,4 @@ Steps 1–6 are plain regex passes over the raw Markdown. They also apply inside
 8. **Spaced ellipses**: `. . .` becomes `.&nbsp;.&nbsp;.` (with a leading `&nbsp;` when preceded by whitespace). This applies everywhere in the file, with no skip list.
 9. **Alt text**: an `<img>` whose `src` basename is a key in `alt-text.json` gets its `alt` set or replaced. Matching is case-sensitive.
 
-These passes run over the **entire** HTML file, including `<head>`. Text inside `<title>` is not skipped.
+These passes run over the **entire** HTML file, including `<head>`, except the `<title>` element, which is set aside first and put back untouched (it is plain text, so no pass may put markup in it).

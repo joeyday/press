@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { execFileSync } from "child_process";
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -27,6 +28,22 @@ const TEMPLATE_DIR = path.join(
   "template",
 );
 const TEMPLATE_PATH = path.join(TEMPLATE_DIR, "layout.ejs");
+
+// ─── Cache-buster ───
+// The content repo's commit (CI sets GITHUB_SHA; locally, the vault's HEAD), so
+// assets are refetched exactly when a deploy changes something. Without a repo,
+// one timestamp for the whole build.
+function cacheBuster() {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.slice(0, 7);
+  try {
+    return execFileSync("git", ["rev-parse", "--short=7", "HEAD"], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return String(Math.floor(Date.now() / 1000));
+  }
+}
 
 async function build() {
   await fs.mkdir(OUTPUT_DIR, { recursive: true });
@@ -62,6 +79,7 @@ async function build() {
     asideUrls,
     featuredUrls,
     allKnownUrls,
+    cacheBust: cacheBuster(),
   });
 
   const searchDocs = [];
@@ -102,6 +120,7 @@ async function build() {
       isNote: fileInfo.isNote,
       notePage: pageByNotes[fileInfo.finalUrlPath] || null,
       noteUrl: notesByPage[fileInfo.finalUrlPath] || null,
+      backlinksUrl: fileInfo.finalUrlPath === "/" ? "/backlinks" : `${fileInfo.finalUrlPath}/backlinks`,
       categories: resolvedCategories,
       subcategories,
       pages,

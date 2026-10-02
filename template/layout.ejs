@@ -5,28 +5,28 @@
 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="/asset/style.css?<%= Math.floor(Date.now() / 1000) %>">
+    <link rel="stylesheet" href="/asset/style.css?<%= cacheBust %>">
     
     <link rel="stylesheet" href="https://use.typekit.net/exn2xvh.css">
     <link rel="stylesheet" href="https://kit.fontawesome.com/4a9f54cbf1.css" crossorigin="anonymous">
     
-    <link rel="apple-touch-icon" sizes="57x57" href="/asset/apple-touch-icon-57x57.png?v=<%= Math.floor(Date.now() / 1000) %>">
-    <link rel="apple-touch-icon" sizes="60x60" href="/asset/apple-touch-icon-60x60.png?v=<%= Math.floor(Date.now() / 1000) %>">
-    <link rel="apple-touch-icon" sizes="72x72" href="/asset/apple-touch-icon-72x72.png?v=<%= Math.floor(Date.now() / 1000) %>">
-    <link rel="apple-touch-icon" sizes="76x76" href="/asset/apple-touch-icon-76x76.png?v=<%= Math.floor(Date.now() / 1000) %>">
-    <link rel="apple-touch-icon" sizes="114x114" href="/asset/apple-touch-icon-114x114.png?v=<%= Math.floor(Date.now() / 1000) %>">
-    <link rel="apple-touch-icon" sizes="120x120" href="/asset/apple-touch-icon-120x120.png?v=<%= Math.floor(Date.now() / 1000) %>">
-    <link rel="apple-touch-icon" sizes="144x144" href="/asset/apple-touch-icon-144x144.png?v=<%= Math.floor(Date.now() / 1000) %>">
-    <link rel="apple-touch-icon" sizes="152x152" href="/asset/apple-touch-icon-152x152.png?v=<%= Math.floor(Date.now() / 1000) %>">
-    <link rel="apple-touch-icon" sizes="180x180" href="/asset/apple-touch-icon-180x180.png?v=<%= Math.floor(Date.now() / 1000) %>">
-    <link rel="icon" type="image/png" href="/asset/favicon-32x32.png?v=<%= Math.floor(Date.now() / 1000) %>" sizes="32x32">
-    <link rel="icon" type="image/png" href="/asset/favicon-194x194.png?v=<%= Math.floor(Date.now() / 1000) %>" sizes="194x194">
-    <link rel="icon" type="image/png" href="/asset/favicon-96x96.png?v=<%= Math.floor(Date.now() / 1000) %>" sizes="96x96">
-    <link rel="icon" type="image/png" href="/asset/android-chrome-192x192.png?v=<%= Math.floor(Date.now() / 1000) %>" sizes="192x192">
-    <link rel="icon" type="image/png" href="/asset/favicon-16x16.png?v=<%= Math.floor(Date.now() / 1000) %>" sizes="16x16">
-    <link rel="shortcut icon" href="/asset/favicon.ico?<%= Math.floor(Date.now() / 1000) %>">
+    <link rel="apple-touch-icon" sizes="57x57" href="/asset/apple-touch-icon-57x57.png?v=<%= cacheBust %>">
+    <link rel="apple-touch-icon" sizes="60x60" href="/asset/apple-touch-icon-60x60.png?v=<%= cacheBust %>">
+    <link rel="apple-touch-icon" sizes="72x72" href="/asset/apple-touch-icon-72x72.png?v=<%= cacheBust %>">
+    <link rel="apple-touch-icon" sizes="76x76" href="/asset/apple-touch-icon-76x76.png?v=<%= cacheBust %>">
+    <link rel="apple-touch-icon" sizes="114x114" href="/asset/apple-touch-icon-114x114.png?v=<%= cacheBust %>">
+    <link rel="apple-touch-icon" sizes="120x120" href="/asset/apple-touch-icon-120x120.png?v=<%= cacheBust %>">
+    <link rel="apple-touch-icon" sizes="144x144" href="/asset/apple-touch-icon-144x144.png?v=<%= cacheBust %>">
+    <link rel="apple-touch-icon" sizes="152x152" href="/asset/apple-touch-icon-152x152.png?v=<%= cacheBust %>">
+    <link rel="apple-touch-icon" sizes="180x180" href="/asset/apple-touch-icon-180x180.png?v=<%= cacheBust %>">
+    <link rel="icon" type="image/png" href="/asset/favicon-32x32.png?v=<%= cacheBust %>" sizes="32x32">
+    <link rel="icon" type="image/png" href="/asset/favicon-194x194.png?v=<%= cacheBust %>" sizes="194x194">
+    <link rel="icon" type="image/png" href="/asset/favicon-96x96.png?v=<%= cacheBust %>" sizes="96x96">
+    <link rel="icon" type="image/png" href="/asset/android-chrome-192x192.png?v=<%= cacheBust %>" sizes="192x192">
+    <link rel="icon" type="image/png" href="/asset/favicon-16x16.png?v=<%= cacheBust %>" sizes="16x16">
+    <link rel="shortcut icon" href="/asset/favicon.ico?<%= cacheBust %>">
     <meta name="msapplication-TileColor" content="#616161">
-    <meta name="msapplication-TileImage" content="/asset/mstile-144x144.png?v=<%= Math.floor(Date.now() / 1000) %>">
+    <meta name="msapplication-TileImage" content="/asset/mstile-144x144.png?v=<%= cacheBust %>">
     <meta name="theme-color" content="#ffffff">
     <meta name="format-detection" content="telephone=no">
     
@@ -108,7 +108,9 @@
             <li class="notes muted">Notes</li>
             <% } %>
 
-            <li class="backlinks"><a href="backlinks">Backlinks</a></li>
+            <% if (backlinksUrl) { %>
+            <li class="backlinks"><a href="<%= backlinksUrl %>">Backlinks</a></li>
+            <% } %>
         </ul>
     </nav>
 
@@ -145,6 +147,6 @@
         <p><a href="/about">About</a> &middot; <a href="/colophon">Colophon</a></p>
     </footer>
 
-	<script type="module" src="/asset/css-naked.js?<%= Math.floor(Date.now() / 1000) %>"></script>
+	<script type="module" src="/asset/css-naked.js?<%= cacheBust %>"></script>
 </body>
 </html>
