@@ -6,16 +6,6 @@ import matter from "gray-matter";
 import ejs from "ejs";
 import slugify from "slugify";
 import {
-  addHeadingIds,
-  applyAltText,
-  fixSpacedEllipses,
-  makeAbbreviationWrapper,
-  wrapDivineNames,
-  wrapInitials,
-  wrapRomanNumerals,
-} from "./lib/html/passes.js";
-import { linkBibleRefs } from "./lib/bible/link.js";
-import {
   findCategory,
   notesParentDir,
   parseNameList,
@@ -23,34 +13,11 @@ import {
   resolveLink,
   stripBrackets,
 } from "./lib/links.js";
-import { createWriter, mapLimit } from "./lib/io.js";
+import { mapLimit } from "./lib/io.js";
+import { createLayout } from "./lib/layout.js";
 import { md, protectFencedAttrs } from "./lib/markdown.js";
+import { createOutput } from "./lib/output.js";
 import { expandPartials } from "./lib/partials.js";
-import { collectBibleRefsFromHtml } from "./lib/bible/collect.js";
-
-// Reads a JSON object of { key: value } from the working directory, or returns
-// null (with a note in the log) when the file is missing or malformed.
-async function loadJsonMap(file, label) {
-  let raw;
-  try {
-    raw = await fs.readFile(file, "utf-8");
-  } catch {
-    console.log(`${label}: ${file} not found, skipping.`);
-    return null;
-  }
-  let data;
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    console.log(`${label}: ${file} is not valid JSON, skipping.`);
-    return null;
-  }
-  if (!data || typeof data !== "object" || Array.isArray(data)) {
-    console.log(`${label}: ${file} must be a JSON object, skipping.`);
-    return null;
-  }
-  return data;
-}
 
 // The vault (content) is the working directory; the template ships with Press.
 // Output goes to ./dist unless PRESS_OUT names another directory (local use
@@ -213,10 +180,8 @@ function sortableTitle(title) {
 
 async function build() {
   await ensureDir(OUTPUT_DIR);
-  const renderTemplate = ejs.compile(await fs.readFile(TEMPLATE_PATH, "utf-8"));
 
   const fileMap = {};
-  const titleMap = {};
   const partials = {}; // basename (lowercase) → body, from partial/
   const filesToProcess = [];
   // Exact lookups for link resolution: lowercase "dir/basename" and URL → file.
@@ -354,7 +319,6 @@ async function build() {
     if (!getFrontmatterValue(parsed.data, "title")) {
       parsed.data.title = baseName;
     }
-    titleMap[key] = title;
 
     const hidden = !!getFrontmatterValue(parsed.data, "hidden");
     const rawAliases = getFrontmatterValue(parsed.data, "aliases");
@@ -535,9 +499,6 @@ async function build() {
     );
   }
 
-  // Build a URL→fileInfo lookup for fast reverse lookups.
-  const urlToFileInfo = index.byUrl;
-
   const hiddenUrls = new Set(
     filesToProcess.filter((f) => f.hidden).map((f) => f.finalUrlPath),
   );
@@ -568,63 +529,14 @@ async function build() {
     filesToProcess.filter((f) => f.isNote).map((f) => f.finalUrlPath),
   );
 
-  function classifyLinks(html) {
-    return html.replace(
-      /<a\s([^>]*href="([^"]*)"[^>]*)>/g,
-      (match, attrs, href) => {
-        const classes = [];
-        if (/^https?:\/\//.test(href)) {
-          classes.push("external");
-        } else {
-          classes.push("internal");
-          if (href.startsWith("/")) {
-            // Strip fragment (#section) before checking URL sets
-            const baseHref = href.split("#")[0];
-            if (draftUrls.has(baseHref)) classes.push("draft");
-            if (categoryUrls.has(baseHref)) classes.push("category");
-            if (asideUrls.has(baseHref)) classes.push("aside");
-            if (featuredUrls.has(baseHref)) classes.push("featured");
-            if (!allKnownUrls.has(baseHref) && !baseHref.startsWith("/index/"))
-              classes.push("broken");
-          }
-        }
-        if (/class="/.test(attrs)) {
-          return `<a ${attrs.replace(/class="([^"]*)"/, `class="$1 ${classes.join(" ")}"`)}>`;
-        }
-        return `<a class="${classes.join(" ")}" ${attrs}>`;
-      },
-    );
-  }
-
-  // Split a URL path into its non-empty segments to use as body classes.
-  // e.g. "/index/scripture/romans" → ["index", "scripture", "romans"]
-  function urlBodyClasses(url) {
-    if (url === "/") return ["home"];
-    return (url || "").split("/").filter(Boolean);
-  }
-
-  function renderLayout(content, locals = {}) {
-    const fm = locals.frontmatter || {};
-    const bodyClasses = locals.bodyClasses || urlBodyClasses(locals.url) || [];
-    return classifyLinks(
-      renderTemplate({
-        frontmatter: fm,
-        bodyClasses,
-        content,
-        nsLabel: locals.nsLabel || "Meta page",
-        isNote: locals.isNote || false,
-        notePage: locals.notePage || null,
-        noteUrl: locals.noteUrl || null,
-        categories: locals.categories || [],
-        subcategories: locals.subcategories || [],
-        pages: locals.pages || [],
-        featuredWith: locals.featuredWith || null,
-        featured: locals.featured || false,
-        backlinkUrl: locals.backlinkUrl || null,
-        backlinkCount: locals.backlinkCount ?? 0,
-      }),
-    );
-  }
+  const renderLayout = createLayout({
+    template: await fs.readFile(TEMPLATE_PATH, "utf-8"),
+    draftUrls,
+    categoryUrls,
+    asideUrls,
+    featuredUrls,
+    allKnownUrls,
+  });
 
   // ─── Namespaces ───
   // Each top-level folder is a namespace with its own alphabetical index; root
@@ -729,56 +641,7 @@ async function build() {
 
   const searchDocs = [];
 
-  // ─── Post-processing ───
-  // Every HTML page is rewritten in memory by the passes below and written
-  // once. Heading IDs come first so the Scripture collector can link to
-  // sections; the collector runs before the Bible-ref linker, which would hide
-  // the refs inside <a> tags.
-  const abbrMap = await loadJsonMap("abbreviations.json", "Abbreviation expander");
-  const altMap = await loadJsonMap("alt-text.json", "Alt text injector");
-  const wrapAbbreviations =
-    abbrMap && Object.keys(abbrMap).length > 0 ? makeAbbreviationWrapper(abbrMap) : null;
-  const useAlt = altMap && Object.keys(altMap).length > 0;
-  const allCollectedRefs = [];
-  const writer = createWriter();
-  const passStats = {
-    files: 0,
-    pages: 0,
-    "Heading IDs": 0,
-    "Bible ref linker": 0,
-    "Abbreviation expander": 0,
-    "Initials wrapper": 0,
-    "Roman numeral wrapper": 0,
-    "Divine name wrapper": 0,
-    "Ellipsis normaliser": 0,
-    "Alt text injector": 0,
-  };
-
-  // collectFor is { url, title } for a page whose Bible refs go in the
-  // Scripture index, or null.
-  async function emitHtml(outFilePath, html, collectFor = null) {
-    let out = html;
-    const pass = (name, fn) => {
-      const next = fn(out);
-      if (next !== out) passStats[name]++;
-      out = next;
-    };
-    pass("Heading IDs", addHeadingIds);
-    if (collectFor) {
-      allCollectedRefs.push(
-        ...collectBibleRefsFromHtml(out, collectFor.url, collectFor.title),
-      );
-    }
-    pass("Bible ref linker", linkBibleRefs);
-    if (wrapAbbreviations) pass("Abbreviation expander", wrapAbbreviations);
-    pass("Initials wrapper", wrapInitials);
-    pass("Roman numeral wrapper", wrapRomanNumerals);
-    pass("Divine name wrapper", wrapDivineNames);
-    pass("Ellipsis normaliser", fixSpacedEllipses);
-    if (useAlt) pass("Alt text injector", (h) => applyAltText(h, altMap));
-    passStats.files++;
-    await writer.write(outFilePath, out);
-  }
+  const output = await createOutput();
 
   for (const fileInfo of filesToProcess) {
     if (fileInfo.hidden) continue;
@@ -885,12 +748,6 @@ async function build() {
       }
     }
 
-    const backlinkUrl =
-      fileInfo.finalUrlPath === "/"
-        ? "/backlinks"
-        : `${fileInfo.finalUrlPath}/backlinks`;
-    const backlinkCount = (backlinksMap[fileInfo.finalUrlPath] || []).length;
-
     const finalHtml = renderLayout(htmlContent, {
       url: fileInfo.finalUrlPath,
       frontmatter: fileInfo.parsed.data,
@@ -904,13 +761,11 @@ async function build() {
       pages,
       featuredWith: fileInfo.featuredWith || null,
       featured: fileInfo.featured || false,
-      backlinkUrl,
-      backlinkCount,
     });
 
     const { outFilePath } = getOutputPaths(fileInfo.finalUrlPath);
     // Notes pages, category pages and unlisted pages stay out of the Scripture index.
-    await emitHtml(
+    await output.emitPage(
       outFilePath,
       finalHtml,
       fileInfo.unlisted ||
@@ -919,7 +774,6 @@ async function build() {
         ? null
         : { url: fileInfo.finalUrlPath, title: fileInfo.title },
     );
-    passStats.pages++;
     console.log(
       `Built: ${fileInfo.filePath} -> ${outFilePath} (URL: ${fileInfo.finalUrlPath})`,
     );
@@ -952,7 +806,7 @@ async function build() {
 </body>
 </html>`;
     const { outFilePath } = getOutputPaths(fromUrlPath);
-    await emitHtml(outFilePath, redirectHtml);
+    await output.emit(outFilePath, redirectHtml);
     console.log(`Built (alias redirect): ${fromUrlPath} -> ${toUrl}`);
   }
 
@@ -998,7 +852,7 @@ async function build() {
     });
 
     const { outFilePath } = getOutputPaths(blUrl);
-    await emitHtml(outFilePath, blHtml);
+    await output.emit(outFilePath, blHtml);
     backlinksPageCount++;
   }
   console.log(
@@ -1093,14 +947,14 @@ async function build() {
       frontmatter: { title: indexPage.title, permalink: indexPage.slug },
     });
 
-    await emitHtml(path.join(OUTPUT_DIR, "index", indexPage.slug, "index.html"), html);
+    await output.emit(path.join(OUTPUT_DIR, "index", indexPage.slug, "index.html"), html);
     console.log(`Built (index): /index/${indexPage.slug}`);
   }
 
   // /index/alphabetical is a stub that sends visitors to the Topic index.
   {
     const toUrl = "/index/alphabetical/topic";
-    await emitHtml(
+    await output.emit(
       path.join(OUTPUT_DIR, "index", "alphabetical", "index.html"),
       `<!DOCTYPE html>
 <html lang="en">
@@ -1192,7 +1046,7 @@ async function build() {
     frontmatter: { title: "Search", permalink: "search" },
   });
 
-  await emitHtml(path.join(OUTPUT_DIR, "search", "index.html"), searchHtml);
+  await output.emit(path.join(OUTPUT_DIR, "search", "index.html"), searchHtml);
   console.log("Built: /search");
 
   // Randomizer page — picks a random content page and redirects immediately
@@ -1214,14 +1068,14 @@ async function build() {
     url: "/random",
     frontmatter: { title: "Random page", permalink: "random" },
   });
-  await emitHtml(path.join(OUTPUT_DIR, "random", "index.html"), randomHtml);
+  await output.emit(path.join(OUTPUT_DIR, "random", "index.html"), randomHtml);
   console.log(`Built: /random (${randomUrls.length} page(s))`);
 
   await fs.writeFile(path.join(OUTPUT_DIR, ".nojekyll"), "");
 
   // ── Scripture Index ────────────────────────────────────────────────────────
   console.log(
-    `Scripture collector: ${allCollectedRefs.length} ref(s) from ${passStats.pages} page(s).`,
+    `Scripture collector: ${output.refs.length} ref(s) from ${output.pageCount()} page(s).`,
   );
 
   // Group refs by book, then by canonical ref key (for deduplication).
@@ -1230,7 +1084,7 @@ async function build() {
   //                             displayShort, occMap }>
   // occMap:     Map<occKey, { pageUrl, pageTitle, sectionId, sectionTitle }>
   const refsByBook = new Map();
-  for (const ref of allCollectedRefs) {
+  for (const ref of output.refs) {
     let bookData = refsByBook.get(ref.bookIndex);
     if (!bookData) {
       bookData = {
@@ -1290,7 +1144,7 @@ async function build() {
       url: "/index/scripture",
       frontmatter: { title: "Scripture index", permalink: "scripture" },
     });
-    await emitHtml(path.join(scriptureRootDir, "index.html"), rootHtml);
+    await output.emit(path.join(scriptureRootDir, "index.html"), rootHtml);
     allKnownUrls.add("/index/scripture");
     console.log("Built (index): /index/scripture");
   }
@@ -1337,21 +1191,14 @@ async function build() {
         permalink: book.bookSlug,
       },
     });
-    await emitHtml(path.join(scriptureRootDir, book.bookSlug, "index.html"), bookHtml);
+    await output.emit(path.join(scriptureRootDir, book.bookSlug, "index.html"), bookHtml);
     allKnownUrls.add(`/index/scripture/${book.bookSlug}`);
     console.log(`Built (index): /index/scripture/${book.bookSlug}`);
   }
 
   // ── End Scripture Index ────────────────────────────────────────────────────
 
-  await writer.flush();
-
-  for (const [name, count] of Object.entries(passStats)) {
-    if (name === "files" || name === "pages") continue;
-    console.log(
-      `${name}: processed ${passStats.files} HTML file(s), rewrote ${count}.`,
-    );
-  }
+  await output.finish();
 }
 
 // ─── CLI ──────────────────────────────────────────────────────────────────────

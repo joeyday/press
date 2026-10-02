@@ -100,7 +100,7 @@ Steps 1–6 are plain regex passes over the raw Markdown. They also apply inside
 
 ### Layout template variables
 
-`frontmatter`, `bodyClasses`, `content`, `nsLabel`, `isNote`, `notePage`, `noteUrl`, `categories`, `subcategories`, `pages`, `featured`, `featuredWith`, `backlinkUrl` and `backlinkCount`.
+`frontmatter`, `bodyClasses`, `content`, `nsLabel`, `isNote`, `notePage`, `noteUrl`, `categories`, `subcategories`, `pages`, `featured` and `featuredWith`.
 
 - `bodyClasses`: the URL's path segments, or `["home"]` for `/`.
 - `nsLabel`: the page's folder name, capitalised, plus " page" (`Topic page`, `Commentary page`), or `Meta page` for root pages and generated pages. A notes page uses its page's folder.
@@ -108,7 +108,6 @@ Steps 1–6 are plain regex passes over the raw Markdown. They also apply inside
 - `categories`, `subcategories`, `pages`: arrays of `{title,url}`. `subcategories` holds members that are category pages, and `pages` holds the rest.
 - `featured`: true only for `featured: true`.
 - `featuredWith`: the raw page-name string, or null.
-- `backlinkUrl`: null on generated pages (indexes, search, random, backlinks pages).
 
 ## Generated pages
 

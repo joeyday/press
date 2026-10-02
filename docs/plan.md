@@ -84,7 +84,7 @@ lib/bible/              books table, ref parser, linker, scripture-index collect
 lib/pages/*.js          indexes, search, random, backlinks, redirects, scripture
 ```
 
-**Progress (2026-10-02):** the clean build went from **~0.97 s to ~0.48 s** (5 runs each, same machine), byte-identical to the baseline and to the previous `build.js` on edge-case scratch vaults. Done: `lib/html/walk.js` (one tag walker), `lib/html/passes.js` (the pure HTML passes, abbreviation regex built once), `lib/bible/{refs,link,collect}.js`, `lib/markdown.js`, `lib/partials.js`, `lib/links.js`, `lib/io.js` (capped-concurrency reads, copies and writes; same-path writes stay ordered), one `loadJsonMap`, the layout compiled once, and the post-passes folded into `emitHtml`: every page flows through heading IDs → Scripture collection → the other passes in memory and is written once. Asset name collisions now keep only the later file (as on a case-insensitive filesystem). Still in `build.js` (about 1,370 lines): file discovery, page records, the relationship maps, `classifyLinks`, the render loop and the generated pages. Next: pull those apart (`lib/vault.js`, `lib/model.js`, `lib/layout.js`, `lib/pages/*`), then re-profile for what's left (markdown-it ~80 ms, Bible-ref linker ~50 ms, layout render, reading sources).
+**Progress (2026-10-02):** the clean build went from **~0.97 s to ~0.48 s** (5 runs each, same machine), byte-identical to the baseline and to the previous `build.js` on edge-case scratch vaults. Done: `lib/html/walk.js` (one tag walker), `lib/html/passes.js` (the pure HTML passes, abbreviation regex built once), `lib/bible/{refs,link,collect}.js`, `lib/markdown.js`, `lib/partials.js`, `lib/links.js`, `lib/io.js` (capped-concurrency reads, copies and writes; same-path writes stay ordered), `lib/layout.js` (compiled layout and link classification), `lib/output.js` (the in-memory post-passes and the writer), one `loadJsonMap`, the layout compiled once, and the post-passes folded into `emitHtml`: every page flows through heading IDs → Scripture collection → the other passes in memory and is written once. Asset name collisions now keep only the later file (as on a case-insensitive filesystem). Still in `build.js` (about 1,230 lines): file discovery, page records, the relationship maps, the render loop and the generated pages. Next: pull those apart (`lib/vault.js`, `lib/model.js`, `lib/layout.js`, `lib/pages/*`), then re-profile for what's left (markdown-it ~80 ms, Bible-ref linker ~50 ms, layout render, reading sources).
 
 ### What the vault actually uses (survey 2026-10-01)
 
@@ -188,7 +188,7 @@ Found in the full code review (2026-10-02), each reproduced in a scratch vault:
 - The link classes `draft`, `category`, `aside`, `featured` and `internal` have no CSS rules; only `external`, `broken` and the leftover `rtBibleRef` are styled. The Entypo `@font-face` rules are unused (and the Entypo Social URLs are relative and broken), and `font-awesome.min.css`, `fontello.css` and most of `template/fonts/` (516 KB) aren't referenced by the layout, which uses the Font Awesome kit.
 
 **Dead or misleading code** to clean up when touched:
-- `titleMap`, `urlToFileInfo`, `SKIP_FILES` (`replit.md`) and `ASSET_SKIP_FILES` (`build.js`) are dead.
+- `SKIP_FILES` (`replit.md`) and `ASSET_SKIP_FILES` (`build.js`) are dead.
 - The `TRANSLATIONS` Set is unused (the list is duplicated three times as regexes).
 - The `osis` field is unused.
 - The `permalink === ""` homepage branch is unreachable.
