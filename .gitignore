@@ -1,0 +1,9 @@
+# Local copy of the site content (lives in its own repo)
+vault/
+
+dist/
+node_modules/
+.DS_Store
+
+# Reference build output for byte-identical refactor checks
+baseline/

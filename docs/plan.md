@@ -2,34 +2,133 @@
 
 Living roadmap for Press. Update it as work lands; delete finished items rather than ticking them.
 
-## 1. Disentangle Press from the content repo
+## 0. Finish the split: Press as a git-installed CLI (do this first)
 
-Press and the site content used to share one GitHub repo. The goal is two repos: Press (this one) and the vault.
+The content repo is `joeyday/totascriptura.org`. Both repos are public, so no CI token is needed. The content repo depends on Press as a git dependency. The lockfile pins the exact Press commit, so work on Press can't reach the live site until the content repo deliberately bumps it.
 
-**Already true:** `build.js` resolves all inputs and outputs from the working directory. So `cd vault && node ../press/build.js` works today, with deps installed in `press/`. Tested 2026-10-01 against a scratch vault.
+**Press:**
+- Add `bin: { "press": "build.js" }`, a shebang, `files`, `engines`, and `private: true` (which blocks accidental npm publishing; git installs still work).
+- Possibly move `template/` here, resolving it from `import.meta.url` instead of the cwd.
 
-**Missing from this repo** (requested from Joey):
-- `package.json` / `package-lock.json`: we need the real dependency versions. `markdown-it-attrs` and `markdown-it-container` behaviour varies by version.
-- `template/layout.ejs` and anything else under `template/` (CSS, fonts, JS). Decide: is this a theme the vault owns, or a default that Press ships?
-- `.github/workflows/deploy.yml`: shows how CI invokes the build. It will need to check out or install Press.
-- `scripts/post-merge.sh`: referenced by the Replit config. Probably Replit-only.
-- For reference only (content, stays in the vault): `abbreviations.json`, `alt-text.json`, `partials/`, `404.md`, `Colophon.md`, which holds the source of the Bible book abbreviation table.
+**Content repo:**
+- Replace the nine dependencies with `"press": "github:joeyday/press"` and add `"build": "press"`.
+- Regenerate the lockfile.
+- Delete `build.js`, and `template/` if it moved.
+- Have `deploy.yml` run `npm ci && npm run build`, and bump Node 20 to 22, since 20 is end-of-life.
+- Bump Press later with `npm update press`.
 
-**Site-specific things hardcoded in `build.js`.** Candidates to move into vault config:
-- The `/random` page body (a Proverbs 16:33 quotation, with `LORD` wrapped in `<abbr>`, so the divine-name pass skips it).
-- Font Awesome star classes on the alphabetical index (`fa-sharp fa-solid fa-star`).
-- Index page titles and empty-state strings.
-- The translation list and the ESV default.
-- The MiniSearch CDN URL.
-- The skip lists (`replit.md`, `.local`).
+## 1. Short-term goals (set 2026-10-01)
 
-**Open question:** are the Bible-reference, divine-name, Roman-numeral and Scripture-index features core Press or site plugins? They are clearly specific to this site.
+Press is a bespoke, single-site tool. There are three goals: **(a)** split `build.js` into modules, **(b)** make the build much faster (aim for about half the current time), and **(c)** hardcode folder roles and other decisions that are currently generic.
 
-**Likely next steps:**
-1. Add `package.json` (ESM, `bin`/`build` script) and `.gitignore`.
-2. Accept the vault dir and out dir as CLI args, defaulting to cwd.
-3. Add a regression harness: a fixture vault plus snapshot of `dist/`, so refactors are safe.
-4. Consider splitting `build.js` into modules.
+### Safety net (in place 2026-10-01)
+- `vault/` is a copy of the real vault: 318 `.md` files, 222 built pages, 616 output files.
+- `baseline/dist` is the original script's output.
+- `scripts/compare-dist.mjs` checks a new build against it. The build is deterministic apart from the layout's `Date.now()` cache-busters, which the script normalises.
+
+Every refactor step must leave `dist/` **byte-identical**. Bug fixes and hardcoding changes that alter output go in separate commits, and each one's diff is reviewed on its own.
+
+Refresh `vault/` with:
+```sh
+rsync -a --delete --exclude='.git/' --exclude='.obsidian/' --exclude='.trash/' --exclude='.github/' \
+  --exclude='.DS_Store' --exclude='node_modules/' --exclude='dist/' \
+  --exclude='/build.js' --exclude='/package.json' --exclude='/package-lock.json' \
+  "$HOME/Documents/Obsidian/Tota Scriptura/" vault/
+```
+
+### Baseline timing (M-series Mac, Node 22, 2026-10-01)
+A clean build takes **~0.97 s** (5 runs: 0.957–1.002 s).
+
+`--cpu-prof` breakdown of the ~950 ms:
+- **312 ms idle**: waiting on strictly sequential file I/O.
+- ~68 ms "(program)".
+- ~90 ms in buffer/file-handle reads, opens and writes.
+- ~70+ ms in EJS compilation, because the layout is recompiled for every page.
+- The post-pass transforms take 10–17 ms each: initials, abbreviations, Roman numerals, divine names, Bible refs.
+- ~21 ms in GC.
+
+Node startup and module load are a fixed ~50 ms floor. Halving the total looks realistic, because I/O and EJS alone account for roughly half.
+
+### Why (a) and (b) aren't really at odds
+The features are already mostly pure `html → html` / `text → text` functions. What's slow is not the features but the **orchestration**. Each post-pass reads every file from disk, rewrites it, and writes it back: about 9 read/write round trips per page. The fix is to put each feature in its own module, exposing a pure per-page function, and have one orchestrator own the loop. Each page then flows through every stage in memory and is written once. With more modules, the corpus gets *fewer* passes, not more.
+
+### Speed candidates
+These need measurement before we commit to them.
+- **In-memory post-processing, written once.** Removes about 9 reads and up to 9 writes per page, plus the re-read for Scripture collection. This is probably the biggest win.
+- **Compile `layout.ejs` once.** Today `ejs.render` recompiles it for every page, backlinks page and index.
+- **Skip body EJS when the source has no `<%`.** Better still, drop body EJS entirely if the only user is a partial.
+- **Resolve embeds and wikilinks once per page.** The backlinks pre-pass currently repeats that work for the main render. Record outgoing links during the single pass.
+- **Remove O(n) scans in link resolution.** That's the `resolveFileMapKey` key scan, the path-qualified filter, and the root tiebreaker's `.some`. Precomputed maps or hardcoded folders can replace them.
+- **Bible refs: skip text nodes that contain no digit.** Also share one parse between the linker and the collector, and fix the case-insensitive matching (`gi`) while we're there. The huge alternation regex currently runs twice per text node.
+- **Compile the abbreviation regex once** instead of once per file.
+- **Parallel I/O** for reading sources, copying assets and writing output, instead of strictly sequential `await`s. Replace `ensureDir`'s access+mkdir with `mkdir({recursive})`.
+- **Possibly a single tokenizer walk shared by all text transforms.** Only worth doing if profiling says so, because ordering dependencies (abbr → roman/divine skip) make fusing harder.
+
+### Proposed module layout (draft)
+```
+build.js                orchestrator: load → model → resolve → render+post → generated pages
+lib/vault.js            fixed folders → page records (frontmatter, urls)
+lib/links.js            link resolution, wikilinks
+lib/embeds.js
+lib/markdown.js         markdown-it setup, %%, ~small~, fenced attrs
+lib/model.js            aliases, asides, categories, featured, backlinks
+lib/layout.js           compiled layout, classifyLinks
+lib/html/walk.js        one tag-tokenizer/skip-stack helper (replaces 6 copies)
+lib/html/*.js           heading-ids, abbreviations, initials, roman, divine-names, ellipses, alt-text
+lib/bible/              books table, ref parser, linker, scripture-index collector
+lib/pages/*.js          indexes, search, random, backlinks, redirects, scripture
+```
+
+### What the vault actually uses (survey 2026-10-01)
+
+| Folder | Files | Frontmatter seen |
+|---|---|---|
+| root | 7 | `unlisted` ×7, `quick nav` ×3, `title`, `permalink`, `hidden` |
+| `topic/` | 141 | `categories` 89, `draft` 49, `hidden` 34, `stub` 27, `aliases` 21, `featured` 12, `featured with` 2, `disambiguation` 1, `title` 1 |
+| `notes/` | 96 | **`aside of` 96**, `hidden` 15, `aliases` 2, `title` 1 |
+| `partial/` | 44 | `hidden` 42 (the two without it, `god-eternity` and `spirit-eternity`, are published at `/partial/…`, probably by mistake) |
+| `category/` | 21 | `categories` 16 |
+| `reading/` | 5 | `hidden` 5, `categories` 5, `draft` 1 |
+| `commentary/` | 4 | `unlisted` 4, `categories` 4 |
+| `image/` | 43 | images and favicons (the only asset folder besides `template/`) |
+| `template/` | | `layout.ejs`, `style.css`, `css-naked.js`, Font Awesome + Fontello CSS, `fonts/`, and a dead `embed.ejs` |
+
+Other root files that aren't site content: `NTOT.md`, `OTNT.md` and `Sandbox.md` (built as pages), `Topics.base` (Obsidian Bases), and the tooling leftovers `convert-wiki.py`, `do-pandoc.sh`, `ts-filter.lua` and `example-page.html`.
+
+Usage counts:
+- **Duplicate basenames:** 92 pairs, almost all `notes/X` ↔ `topic/X`. That is why **239 of 522 wikilinks are path-qualified**.
+- **No `[[…#heading]]` links.**
+- **EJS appears only in `Colophon.md` and `partial/mt.md`.**
+- **228 embeds.** 44 files use arguments or placeholders, so the argument machinery is in real use.
+- **`permalink`** is used once (`Home page.md → home`).
+- Small text `~x~` appears in 139 files, `:::` containers in 16, and `%%` comments in 4.
+- `quick nav`, `stub` and `disambiguation` are presumably read by `layout.ejs`.
+
+**Notes for topics that don't exist yet are a feature.** Joey sometimes writes notes before the topic page exists. One current example: `notes/Doubt.md` → `topic/Doubt`. Such a note should be treated as draft and/or hidden even without the flag, and shouldn't produce a warning. The exact behaviour is still to be decided.
+
+Fixed in the vault on 2026-10-01: the stray `{{lds}}` embed, and the two unhidden partials. `baseline/` was regenerated afterwards (612 files).
+
+### Hardcoding candidates
+Joey to confirm each. The evidence comes from the survey above.
+- **Fixed folder roles.** Scan only `topic/`, `notes/`, `category/`, `reading/`, `commentary/`, `partial/` and the root, plus the assets in `image/` and `template/`. This replaces the whole-tree walk and its skip lists.
+- **`notes/X` is the aside of the page named `X`.** This already holds for 91 of 96 notes. The exceptions:
+  - three point at root or `reading/` pages
+  - `Epistemolgy` (a typo) and `Heirs of God (notes)` have mismatched names
+  - `Doubt`'s target is missing
+
+  This would retire `aside of`.
+- **`partial/` is embed-only and never built.** This retires `hidden` there and fixes the two accidental pages. `hidden` is still used in `topic/` (34), `notes/` (15) and `reading/` (5), so we need to decide what it means outside `partial/`.
+- **Resolve folder-qualified links via a `folder/name` map**, replacing suffix matching. Bare names resolve to `topic/` (or the root) before `notes/`. The root-file tiebreaker and generic ambiguity logic can probably go.
+- **Hardcode the homepage** as `Home page.md`, and drop `permalink` and the home/index logic.
+- **Canonical lowercase frontmatter keys.** This drops `getFrontmatterValue` and fixes the `Title:` bug.
+- **Assets only from `image/` and `template/`**, which drops the whole-vault scan.
+- **`abbreviations.json` and `alt-text.json` become required** and are simply imported.
+- **Body EJS** could be replaced or retired, since only `Colophon.md` and `mt.md` use it.
+- **Keep embed arguments.** They are in real use.
+- **Unknown:** whether the fuzzy hyphen-as-space link matching is used. Measure it before removing.
+
+### Template: stays in the vault or moves here?
+`template/` holds the layout, CSS, JS and fonts. Content editors probably shouldn't need to touch it. If it moves to Press, the vault becomes pure content.
 
 ## 2. Verified bugs and surprises
 

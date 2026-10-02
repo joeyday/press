@@ -10,24 +10,29 @@ A static site generator with a deliberately boring name. It turns an Obsidian-st
 ## Working rules
 
 - Read the code before believing any doc. When code and docs disagree, tell Joey rather than silently picking one.
-- Press is being split away from the site content, which used to share the repo. Keep vault-specific content and config out of this repo, and flag anything hardcoded in `build.js` that is really site config.
+- Press is a **bespoke generator for exactly one site**. It will never be a general-purpose tool. There is a slim chance it will someday also serve one very similar second site, which would need at most one or two settings. Hardcode decisions such as folder roles, file names and frontmatter keys rather than adding options, config or plugin hooks. Prefer YAGNI over DRY, and treat removing abstractions as an improvement. Libraries are fine for things that must be bulletproof, such as Markdown parsing.
+- Build speed is a first-class goal. Don't add another full pass over the corpus without a reason.
+- The site's *content* lives in a separate vault repo. The generator's code lives here, even though that code is site-specific.
 - Match the existing style: 2-space indent, double quotes, trailing commas, Prettier-ish wrapping, `// ─── Section ───` banners, and explanatory comments on the non-obvious regexes.
 - Nothing is committed yet (no commits on `main`). Only commit when asked.
 
 ## Running and testing
 
-There is no `package.json`, lockfile, template or test suite in the repo yet (see `docs/plan.md`). To exercise the script, use a scratch vault:
+`vault/` (gitignored) holds a local **copy** of the real site content. It was copied from `~/Documents/Obsidian/Tota Scriptura` and excludes `.git`, `.obsidian`, `.github`, `build.js` and the package files. It is test data: never commit it, and never write to the real vault. Refresh it with the same `rsync` (see `docs/plan.md`).
+
+Search tools skip gitignored paths, so target `vault/` explicitly when searching it.
 
 ```sh
-# in a scratch dir: package.json {"type":"module"} plus
-npm i gray-matter markdown-it markdown-it-footnote markdown-it-mark markdown-it-container \
-      markdown-it-bracketed-spans markdown-it-attrs ejs slugify
-mkdir template && echo '<title><%= frontmatter.title %></title><%- content %>' > template/layout.ejs
-# add some .md files, then:
-node /path/to/build.js       # cwd = the vault; output goes to ./dist
+npm ci                                                      # once
+cd vault && rm -rf dist && node ../build.js                 # build (cwd must be the vault)
+node ../scripts/compare-dist.mjs ../baseline/dist dist      # must say IDENTICAL for pure refactors
 ```
 
-All paths in `build.js` are relative to the cwd. Bare imports resolve from `build.js`'s own directory. Delete `dist/` between runs, because the build doesn't clean it.
+- All paths in `build.js` are relative to the cwd. From the repo root, the build would publish this repo's own Markdown.
+- The build doesn't clean `dist/`, so always `rm -rf dist` first.
+- `baseline/dist` (gitignored) is the reference output of the original `build.js` for the current `vault/` copy. Regenerate it whenever `vault/` is refreshed, or whenever an output change is accepted on purpose.
+- The layout uses `Date.now()` cache-busters, so raw `diff -r` always differs. `compare-dist.mjs` normalises them.
+- For edge cases the vault lacks, use a scratch vault in the scratchpad.
 
 ## Architecture in one breath
 
