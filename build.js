@@ -280,6 +280,7 @@ function applyContinuationRefs(text, ctxState) {
       vs,
       rv,
       ev,
+      undefined,
       ctxState.translation,
     );
     result += sep + makeBibleRefLink(url, match.slice(sep.length));
@@ -1384,6 +1385,8 @@ async function findFiles(dir, { skipDirs, filter, rootDir }) {
   } catch {
     return results;
   }
+  // readdir order is up to the filesystem; sort so output doesn't depend on it.
+  entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
