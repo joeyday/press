@@ -2,7 +2,7 @@
 
 Living roadmap for Press. Update it as work lands; delete finished items rather than ticking them.
 
-## 0. Finish the split: Press as a git-installed CLI (do this first)
+## 0. Finish the split: Press as a git-installed CLI (DONE 2026-10-01)
 
 The content repo is `joeyday/totascriptura.org`. Both repos are public, so no CI token is needed. The content repo depends on Press as a git dependency. The lockfile pins the exact Press commit, so work on Press can't reach the live site until the content repo deliberately bumps it.
 
@@ -11,7 +11,7 @@ The content repo is `joeyday/totascriptura.org`. Both repos are public, so no CI
 - `template/` moved here and is resolved from `import.meta.url`. The dead `embed.ejs` was dropped.
 - Verified by installing the packed tarball into a copy of the vault and running `npm run build`: the output was identical to the baseline.
 
-**Content repo:**
+**Content repo (done in `fdc471e`; deployed successfully, live pages match the baseline):**
 - Replace the nine dependencies with `"press": "github:joeyday/press#v0.1.0"` (pinned to a tag) and add `"build": "press"`.
 - Regenerate the lockfile.
 - Delete `build.js`, and `template/` if it moved.
