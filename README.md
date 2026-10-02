@@ -16,7 +16,7 @@ The content repo installs Press as a git dependency and runs its `press` command
 
 Commands (run from the vault root):
 - `press` or `press build`: build the site (what CI runs).
-- `press serve`: build, then serve the output at <http://localhost:4000/> until Ctrl-C. `serve.js` mimics GitHub Pages: `/foo/` serves `foo/index.html`, `/foo` redirects to `/foo/`, and unmatched URLs get `404.html` with a 404 status. It binds to localhost, the port is hardcoded, and it doesn't rebuild on changes.
+- `press serve`: build, then serve the output at <http://press.lvh.me/> until Ctrl-C (`lvh.me` is a public domain whose subdomains all resolve to 127.0.0.1; it needs working DNS, and some routers block such answers). `serve.js` mimics GitHub Pages: `/foo/` serves `foo/index.html`, `/foo` redirects to `/foo/`, and unmatched URLs get `404.html` with a 404 status. The hostname and port (80) are hardcoded. It binds all interfaces, because macOS only allows unprivileged port 80 that way, but drops every connection that isn't from this machine. It doesn't rebuild on changes.
 
 For a local `press` command, run `npm link` once in the Press repo. During Press development you can also run `cd vault && node ../build.js` (see `CLAUDE.md`).
 
