@@ -44,7 +44,7 @@ The content repo (`joeyday/totascriptura.org`, cloned at `~/Documents/Obsidian/T
 To release:
 1. Bump `version` in `package.json`.
 2. Commit, then tag `vX.Y.Z` and push the tag.
-3. In the content repo, update the tag in `package.json` and run `npm install --package-lock-only` (never a full `npm install` inside the iCloud vault).
+3. In the content repo, update the tag in `package.json` and run `npm update press --package-lock-only` (never a full `npm install` inside the iCloud vault). Plain `npm install --package-lock-only` does **not** re-resolve a git dependency whose lock entry already exists, so CI would keep building with the old Press. Check that `package-lock.json`'s `node_modules/press` entry shows the new `version` and the new tag's commit (`git rev-parse --short vX.Y.Z`) before committing. Content migrations and the tag bump go in one commit, since the push is what deploys.
 4. Commit and push. Only do this with Joey's go-ahead, since it deploys the live site.
 
 `template/` (layout, CSS, JS, fonts) belongs to Press. It is resolved from `build.js`'s own directory, and its assets are copied alongside the vault's.
