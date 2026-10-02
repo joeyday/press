@@ -152,6 +152,9 @@ Today the random pool is just the alphabetical lists (minus `category`), so `unl
 - Generated index pages say "Meta page" in the nav tab. They should say "Index page".
 - Generated pages never have notes pages, so the "Notes" tab shouldn't be shown for them (best: not in the DOM at all). Needs a layout flag or a separate path for generated pages.
 
+### Backlog: link the sidebar straight to the Topic index (Joey, 2026-10-02)
+The layout's "Alphabetical index" links (`template/layout.ejs` lines 46 and 127, plus the random page's `<noscript>` link in `lib/pages/random.js`) point at `/index/alphabetical`, the redirect stub. They work, but they should go straight to `/index/alphabetical/topic` to skip the redirect. Keep the stub for old URLs.
+
 ### `reading/` is now `summary/` (done; live since v0.3.0)
 Menu label "Summaries", nav tab "Summary page". A summary page summarises the main arguments and Scripture citations of a book or article. Its notes page, like a commentary's, holds Joey's own observations and collected material. The `Book summaries` / `Article summaries` categories have no pages yet; their members are hidden, so the build is silent about it.
 
