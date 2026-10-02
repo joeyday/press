@@ -84,7 +84,7 @@ lib/bible/              books table, ref parser, linker, scripture-index collect
 lib/pages/*.js          indexes, search, random, backlinks, redirects, scripture
 ```
 
-**Progress (2026-10-02):** `lib/html/walk.js` is done. `walkHtml` and `mapText` replace the six hand-rolled tag-splitter copies (Bible-ref linker, Scripture collector, abbreviations, initials, Roman numerals, divine names), and the four wrapper passes share one `WRAP_SKIP_TAGS`. Verified byte-identical on `vault/` and on edge-case scratch vaults against the previous `build.js`. Next: move each pass into its own module under `lib/html/` and `lib/bible/`, still byte-identical, before touching the orchestrator.
+**Progress (2026-10-02):** done, each step verified byte-identical against the baseline and against the previous `build.js` on edge-case scratch vaults: `lib/html/walk.js` (one tag walker, `walkHtml`/`mapText`, replaces six copies), `lib/html/passes.js` (the pure HTML passes), `lib/bible/{refs,link,collect}.js`, `lib/markdown.js`, `lib/partials.js`, `lib/links.js`, and one `loadJsonMap` for the two JSON files. Still in `build.js`: file discovery, page records, the relationship maps, layout and `classifyLinks`, the render loop, the generated pages, and the post-pass loop. Next: pull those apart (`lib/vault.js`, `lib/model.js`, `lib/layout.js`, `lib/pages/*`), then change the orchestrator to write each page once.
 
 ### What the vault actually uses (survey 2026-10-01)
 
