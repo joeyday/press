@@ -2,22 +2,16 @@
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
-import matter from "gray-matter";
 import ejs from "ejs";
 import slugify from "slugify";
-import {
-  findCategory,
-  notesParentDir,
-  parseNameList,
-  pathKey,
-  resolveLink,
-  stripBrackets,
-} from "./lib/links.js";
-import { mapLimit } from "./lib/io.js";
+import { findCategory, pathKey, resolveLink } from "./lib/links.js";
 import { createLayout } from "./lib/layout.js";
 import { md, protectFencedAttrs } from "./lib/markdown.js";
 import { createOutput } from "./lib/output.js";
+import { NAMESPACES, buildModel, nsName } from "./lib/model.js";
+import { compareTitles } from "./lib/titles.js";
 import { expandPartials } from "./lib/partials.js";
+import { IMAGE_EXTENSIONS, copyAssets, loadVault } from "./lib/vault.js";
 
 // The vault (content) is the working directory; the template ships with Press.
 // Output goes to ./dist unless PRESS_OUT names another directory (local use
@@ -30,112 +24,6 @@ const TEMPLATE_DIR = path.join(
   "template",
 );
 const TEMPLATE_PATH = path.join(TEMPLATE_DIR, "layout.ejs");
-const SKIP_FILES = new Set(["replit.md"]);
-const MD_SKIP_DIRS = new Set([
-  "node_modules",
-  "dist",
-  path.basename(OUTPUT_DIR),
-  ".git",
-  ".github",
-  ".local",
-  "template",
-]);
-const ASSET_SKIP_DIRS = new Set([
-  "node_modules",
-  "dist",
-  path.basename(OUTPUT_DIR),
-  ".git",
-  ".github",
-  ".local",
-]);
-const IMAGE_EXTENSIONS = new Set([
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".svg",
-  ".webp",
-  ".avif",
-  ".ico",
-  ".bmp",
-]);
-const ASSET_EXTENSIONS = new Set([
-  ...IMAGE_EXTENSIONS,
-  ".css",
-  ".js",
-  ".eot",
-  ".otf",
-  ".ttf",
-  ".woff",
-  ".woff2",
-]);
-
-async function ensureDir(dir) {
-  try {
-    await fs.access(dir);
-  } catch {
-    await fs.mkdir(dir, { recursive: true });
-  }
-}
-
-async function findFiles(dir, { skipDirs, filter, rootDir }) {
-  rootDir = rootDir || dir;
-  const results = [];
-  let entries;
-  try {
-    entries = await fs.readdir(dir, { withFileTypes: true });
-  } catch {
-    return results;
-  }
-  // readdir order is up to the filesystem; sort so output doesn't depend on it.
-  entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (skipDirs.has(entry.name) || entry.name.startsWith(".")) continue;
-      const subResults = await findFiles(fullPath, {
-        skipDirs,
-        filter,
-        rootDir,
-      });
-      results.push(...subResults);
-    } else if (entry.isFile()) {
-      const item = filter(entry, fullPath, rootDir);
-      if (item) results.push(item);
-    }
-  }
-  return results;
-}
-
-function findMarkdownFiles(dir) {
-  return findFiles(dir, {
-    skipDirs: MD_SKIP_DIRS,
-    filter: (entry, fullPath, rootDir) => {
-      if (
-        !entry.name.endsWith(".md") ||
-        SKIP_FILES.has(entry.name.toLowerCase())
-      )
-        return null;
-      const relDir = path.relative(rootDir, path.dirname(fullPath));
-      return { filePath: fullPath, relDir, fileName: entry.name };
-    },
-  });
-}
-
-const ASSET_SKIP_FILES = new Set(["build.js"]);
-
-function findAssetFiles(dir) {
-  return findFiles(dir, {
-    skipDirs: ASSET_SKIP_DIRS,
-    filter: (entry, fullPath) => {
-      const ext = path.extname(entry.name).toLowerCase();
-      if (!ASSET_EXTENSIONS.has(ext)) return null;
-      if (ASSET_SKIP_FILES.has(entry.name)) return null;
-      return { filePath: fullPath, fileName: entry.name };
-    },
-  });
-}
-
 function getOutputPaths(finalUrlPath) {
   // GitHub Pages serves dist/404.html as the custom 404 page.
   if (finalUrlPath === "/404") {
@@ -153,381 +41,32 @@ function getOutputPaths(finalUrlPath) {
   return { outDirPath, outFilePath: path.join(outDirPath, "index.html") };
 }
 
-function getFrontmatterValue(data, key) {
-  const lowerKey = key.toLowerCase();
-  for (const k of Object.keys(data)) {
-    if (k.toLowerCase() === lowerKey) {
-      return data[k];
-    }
-  }
-  return undefined;
-}
-
-// ─── Article-aware title helpers ─────────────────────────────────────────────
-
-// English articles stripped from the front of a title before alphabetic
-// comparison.  Matching is case-insensitive; "A", "An", and "The" are the
-// only English articles; "An" is tested before "A" to avoid a prefix match.
-const ARTICLE_RE = /^(the|an|a)\s+/i;
-
-// Returns the sort key for a title: leading article moved to end.
-// "The law of Christ" → "law of Christ" (used only for comparisons)
-function sortableTitle(title) {
-  return title.replace(ARTICLE_RE, "").trim();
-}
-
-// ─── End Article-aware title helpers ─────────────────────────────────────────
-
 async function build() {
-  await ensureDir(OUTPUT_DIR);
+  await fs.mkdir(OUTPUT_DIR, { recursive: true });
 
-  const fileMap = {};
-  const partials = {}; // basename (lowercase) → body, from partial/
-  const filesToProcess = [];
-  // Exact lookups for link resolution: lowercase "dir/basename" and URL → file.
-  const index = { byPath: {}, byUrl: {} };
+  const imageMap = await copyAssets({
+    outputDir: OUTPUT_DIR,
+    templateDir: TEMPLATE_DIR,
+  });
+  const { fileMap, partials, filesToProcess, index, aliasRedirects } =
+    await loadVault({ outputDir: OUTPUT_DIR });
 
-  const imageMap = {};
-  const assetFiles = [
-    ...(await findAssetFiles(".")),
-    ...(await findAssetFiles(TEMPLATE_DIR)),
-  ];
-  const assetsOutDir = path.join(OUTPUT_DIR, "asset");
-  if (assetFiles.length > 0) {
-    await ensureDir(assetsOutDir);
-  }
-  // Asset names are flat; when two files share a name (case-insensitively) the
-  // later one wins, and the build warns.
-  const assetsByName = new Map();
-  for (const { filePath: assetPath, fileName: assetName } of assetFiles) {
-    const lowerName = assetName.toLowerCase();
-    const earlier = assetsByName.get(lowerName);
-    if (earlier) {
-      console.warn(
-        `Warning: Asset filename collision — "${assetName}" from "${assetPath}" overwrites "${earlier.assetPath}"`,
-      );
-    }
-    assetsByName.set(lowerName, { assetPath, assetName });
-    if (IMAGE_EXTENSIONS.has(path.extname(assetName).toLowerCase())) {
-      imageMap[lowerName] = `/asset/${assetName}`;
-    }
-  }
-  await mapLimit([...assetsByName.values()], ({ assetPath, assetName }) =>
-    fs.copyFile(assetPath, path.join(assetsOutDir, assetName)),
-  );
-  if (assetFiles.length > 0) {
-    console.log(`Copied ${assetFiles.length} asset(s) to ${path.join(OUTPUT_DIR, "asset")}/`);
-  }
-
-  const mdFiles = await findMarkdownFiles(".");
-
-  const sources = [];
-  const contents = await mapLimit(mdFiles, ({ filePath }) =>
-    fs.readFile(filePath, "utf-8"),
-  );
-  for (const [i, { filePath, relDir, fileName }] of mdFiles.entries()) {
-    const content = contents[i];
-    let parsed;
-    try {
-      parsed = matter(content);
-    } catch (err) {
-      console.warn(
-        `Warning: Failed to parse frontmatter in "${filePath}" — skipping (${err.message})`,
-      );
-      continue;
-    }
-
-    const baseName = path.basename(fileName, ".md");
-
-    // partial/ holds only partials: never pages, and any frontmatter is ignored.
-    if (relDir === "partial") {
-      partials[baseName.toLowerCase().trim()] = parsed.content;
-      continue;
-    }
-
-    sources.push({ filePath, relDir, fileName, baseName, parsed });
-  }
-
-  // Pages get their URL from the permalink. A notes page lives one segment
-  // below its page (/topic/foo → /topic/foo/notes), so pages go first.
-  const pageUrls = {}; // pathKey → URL
-  for (const src of sources) {
-    if (notesParentDir(src.relDir) !== null) continue;
-    const { relDir, baseName, parsed } = src;
-
-    let permalink = getFrontmatterValue(parsed.data, "permalink");
-    if (typeof permalink === "string") {
-      permalink = permalink.replace(/^\/+/, "");
-    }
-
-    if (!permalink) {
-      permalink = slugify(baseName, { lower: true, strict: true });
-    }
-
-    let finalUrlPath;
-    if (relDir === "" && permalink === "home") {
-      finalUrlPath = "/";
-    } else if ((relDir === "" && permalink === "index") || permalink === "") {
-      finalUrlPath = "/";
-    } else {
-      if (relDir === "") {
-        finalUrlPath = `/${permalink}`;
-      } else {
-        finalUrlPath = `/${relDir}/${permalink}`;
-      }
-    }
-
-    src.permalink = permalink;
-    src.finalUrlPath = finalUrlPath;
-    pageUrls[pathKey(relDir, baseName)] = finalUrlPath;
-  }
-  for (const src of sources) {
-    const parentDir = notesParentDir(src.relDir);
-    if (parentDir === null) continue;
-
-    // Notes with no page of their own still get the URL the page would have.
-    const slug = slugify(src.baseName, { lower: true, strict: true });
-    const pageUrl =
-      pageUrls[pathKey(parentDir, src.baseName)] ??
-      (parentDir === "" ? `/${slug}` : `/${parentDir}/${slug}`);
-
-    src.permalink = slug;
-    src.finalUrlPath = `${pageUrl === "/" ? "" : pageUrl}/notes`;
-  }
-
-  for (const src of sources) {
-    const { filePath, relDir, fileName, baseName, parsed, permalink, finalUrlPath } =
-      src;
-    const parentDir = notesParentDir(relDir);
-
-    const key = baseName.toLowerCase().trim();
-    if (!fileMap[key]) fileMap[key] = [];
-    fileMap[key].push(finalUrlPath);
-
-    // Also index by permalink slug so wikilinks can use the permalink as the
-    // target (e.g. [[home]] finding "Home page.md" whose permalink is "home").
-    const permKey = permalink.toLowerCase().trim();
-    if (permKey && permKey !== key) {
-      if (!fileMap[permKey]) fileMap[permKey] = [];
-      if (!fileMap[permKey].includes(finalUrlPath))
-        fileMap[permKey].push(finalUrlPath);
-    }
-
-    parsed.data.permalink = permalink;
-
-    const title = getFrontmatterValue(parsed.data, "title") || baseName;
-    if (!getFrontmatterValue(parsed.data, "title")) {
-      parsed.data.title = baseName;
-    }
-
-    const hidden = !!getFrontmatterValue(parsed.data, "hidden");
-    const rawAliases = getFrontmatterValue(parsed.data, "aliases");
-    const aliases = parseNameList(rawAliases);
-    const rawCategories = getFrontmatterValue(parsed.data, "categories");
-    const categories = parseNameList(rawCategories);
-    const featured = !!getFrontmatterValue(parsed.data, "featured");
-    const rawFeaturedWith = getFrontmatterValue(parsed.data, "featured with");
-    const featuredWith = rawFeaturedWith
-      ? stripBrackets(String(rawFeaturedWith))
-      : null;
-    const draft = !!getFrontmatterValue(parsed.data, "draft");
-    const unlisted = !!getFrontmatterValue(parsed.data, "unlisted");
-
-    const fileInfo = {
-      relDir,
-      isNote: parentDir !== null,
-      isCategory: relDir === "category",
-      // The folder a page "belongs to": its own, or its notes folder's parent.
-      nsDir: parentDir ?? relDir,
-      fileName,
-      filePath,
-      baseName,
-      permalink,
-      finalUrlPath,
-      parsed,
-      title,
-      hidden,
-      aliases,
-      categories,
-      featured,
-      featuredWith,
-      draft,
-      unlisted,
-    };
-    filesToProcess.push(fileInfo);
-    index.byPath[pathKey(relDir, baseName)] = fileInfo;
-    index.byUrl[finalUrlPath] = fileInfo;
-  }
-
-  const aliasRedirects = [];
-  for (const fileInfo of filesToProcess) {
-    if (fileInfo.aliases.length === 0) continue;
-    for (const aliasName of fileInfo.aliases) {
-      const aliasSlug = slugify(aliasName, { lower: true, strict: true });
-      const aliasUrlPath =
-        fileInfo.relDir === ""
-          ? `/${aliasSlug}`
-          : `/${fileInfo.relDir}/${aliasSlug}`;
-      const aliasKey = aliasName.toLowerCase().trim();
-      if (!fileMap[aliasKey]) fileMap[aliasKey] = [];
-      if (!fileMap[aliasKey].includes(fileInfo.finalUrlPath))
-        fileMap[aliasKey].push(fileInfo.finalUrlPath);
-      if (!fileMap[aliasSlug]) fileMap[aliasSlug] = [];
-      if (!fileMap[aliasSlug].includes(fileInfo.finalUrlPath))
-        fileMap[aliasSlug].push(fileInfo.finalUrlPath);
-      aliasRedirects.push({
-        fromUrlPath: aliasUrlPath,
-        toUrl: fileInfo.finalUrlPath,
-        toTitle: fileInfo.title,
-      });
-    }
-  }
-
-  // ─── Categories ───
-  // A category is a page in category/. A page's `categories` names are looked
-  // up there, and its members are the listed pages that name it. An empty
-  // category is unlisted, which can in turn empty its parent, so repeat until
-  // nothing changes.
-  let membersMap;
-  for (let changed = true; changed; ) {
-    membersMap = {};
-    for (const fileInfo of filesToProcess) {
-      if (fileInfo.hidden || fileInfo.unlisted) continue;
-      for (const catName of fileInfo.categories) {
-        const target = findCategory(index, catName);
-        if (!target) continue;
-        (membersMap[target.finalUrlPath] ??= []).push({
-          title: fileInfo.title,
-          url: fileInfo.finalUrlPath,
-        });
-      }
-    }
-    changed = false;
-    for (const fileInfo of filesToProcess) {
-      if (!fileInfo.isCategory || fileInfo.hidden || fileInfo.unlisted) continue;
-      if (membersMap[fileInfo.finalUrlPath]) continue;
-      fileInfo.unlisted = true;
-      changed = true;
-    }
-  }
-  for (const fileInfo of filesToProcess) {
-    if (fileInfo.hidden || fileInfo.unlisted) continue;
-    for (const catName of fileInfo.categories) {
-      if (!findCategory(index, catName)) {
-        console.warn(
-          `Warning: Could not find category "${catName}" in "${fileInfo.filePath}"`,
-        );
-      }
-    }
-  }
-
-  const featuredPages = [];
-  const draftPages = [];
-
-  for (const fileInfo of filesToProcess) {
-    if (fileInfo.hidden) continue;
-    if (fileInfo.unlisted) continue;
-    if (fileInfo.featured) {
-      featuredPages.push({ title: fileInfo.title, url: fileInfo.finalUrlPath });
-    }
-    if (fileInfo.draft) {
-      draftPages.push({ title: fileInfo.title, url: fileInfo.finalUrlPath });
-    }
-  }
-
-  featuredPages.sort((a, b) =>
-    sortableTitle(a.title).localeCompare(
-      sortableTitle(b.title),
-      undefined,
-      { sensitivity: "base" },
-    ),
-  );
-  draftPages.sort((a, b) =>
-    sortableTitle(a.title).localeCompare(
-      sortableTitle(b.title),
-      undefined,
-      { sensitivity: "base" },
-    ),
-  );
-
-  // Map from primary page URL → secondary pages that declare "featured with" pointing to it.
-  // Secondary pages appear alongside their primary on the featured topics index.
-  const featuredWithMap = {};
-  for (const fileInfo of filesToProcess) {
-    if (fileInfo.hidden) continue;
-    if (fileInfo.unlisted) continue;
-    if (!fileInfo.featuredWith) continue;
-    const resolved = resolveLink(
-      fileInfo.featuredWith,
-      fileMap,
-      index,
-      fileInfo.nsDir,
-    );
-    if (!resolved.url) continue;
-    const targetUrl = resolved.url;
-    if (!featuredWithMap[targetUrl]) featuredWithMap[targetUrl] = [];
-    featuredWithMap[targetUrl].push({
-      title: fileInfo.title,
-      url: fileInfo.finalUrlPath,
-    });
-  }
-
-  // notesByPage: page URL → URL of its notes page, and the reverse. A notes
-  // page is <dir>/notes/X.md for the page <dir>/X.md; either may exist alone.
-  const notesByPage = {};
-  const pageByNotes = {};
-  for (const fileInfo of filesToProcess) {
-    if (!fileInfo.isNote) continue;
-    const page = index.byPath[pathKey(fileInfo.nsDir, fileInfo.baseName)];
-    if (!page || page.isNote) continue;
-    if (!fileInfo.hidden) notesByPage[page.finalUrlPath] = fileInfo.finalUrlPath;
-    if (!page.hidden) {
-      pageByNotes[fileInfo.finalUrlPath] = { url: page.finalUrlPath };
-    }
-  }
-
-  // Sort each category's member list article-aware alphabetically so category
-  // pages and subcategory pages render in consistent order regardless of file
-  // discovery order.
-  for (const arr of Object.values(membersMap)) {
-    arr.sort((a, b) =>
-      sortableTitle(a.title).localeCompare(
-        sortableTitle(b.title),
-        undefined,
-        { sensitivity: "base" },
-      ),
-    );
-  }
-
-  const hiddenUrls = new Set(
-    filesToProcess.filter((f) => f.hidden).map((f) => f.finalUrlPath),
-  );
-  const allKnownUrls = new Set([
-    ...Object.values(fileMap)
-      .flat()
-      .filter((url) => !hiddenUrls.has(url)),
-    ...aliasRedirects.map((r) => r.fromUrlPath),
-    ...Object.values(imageMap),
-    "/search",
-    "/random",
-  ]);
-
-  // Register every non-hidden page's backlinks URL so classifyLinks never
-  // marks a link to it as broken (e.g. the footer link added by the template).
-  for (const fi of filesToProcess) {
-    if (fi.hidden) continue;
-    allKnownUrls.add(
-      fi.finalUrlPath === "/" ? "/backlinks" : `${fi.finalUrlPath}/backlinks`,
-    );
-  }
-  const draftUrls = new Set(draftPages.map((p) => p.url));
-  const featuredUrls = new Set(featuredPages.map((p) => p.url));
-  const categoryUrls = new Set(
-    filesToProcess.filter((f) => f.isCategory).map((f) => f.finalUrlPath),
-  );
-  const asideUrls = new Set(
-    filesToProcess.filter((f) => f.isNote).map((f) => f.finalUrlPath),
-  );
+  const {
+    membersMap,
+    featuredPages,
+    draftPages,
+    featuredWithMap,
+    notesByPage,
+    pageByNotes,
+    allKnownUrls,
+    draftUrls,
+    featuredUrls,
+    categoryUrls,
+    asideUrls,
+    alphabeticalByNs,
+    listedNamespaces,
+    backlinksMap,
+  } = buildModel({ filesToProcess, index, fileMap, partials, imageMap, aliasRedirects });
 
   const renderLayout = createLayout({
     template: await fs.readFile(TEMPLATE_PATH, "utf-8"),
@@ -537,107 +76,6 @@ async function build() {
     featuredUrls,
     allKnownUrls,
   });
-
-  // ─── Namespaces ───
-  // Each top-level folder is a namespace with its own alphabetical index; root
-  // pages are "meta". A namespace with nothing listed has no index page.
-  // The keys set the menu order; the values are the menu labels.
-  const NAMESPACES = {
-    topic: "Topics",
-    category: "Categories",
-    commentary: "Commentaries",
-    summary: "Summaries",
-    meta: "Meta",
-  };
-  const alphabeticalByNs = Object.fromEntries(
-    Object.keys(NAMESPACES).map((ns) => [ns, []]),
-  );
-  for (const fileInfo of filesToProcess) {
-    if (fileInfo.isNote) continue;
-    if (fileInfo.hidden) continue;
-    if (fileInfo.unlisted) continue;
-    const list = alphabeticalByNs[fileInfo.relDir || "meta"];
-    if (!list) continue;
-
-    list.push({
-      title: fileInfo.title,
-      url: fileInfo.finalUrlPath,
-      featured: fileInfo.featured || !!fileInfo.featuredWith,
-    });
-    for (const aliasName of fileInfo.aliases) {
-      list.push({
-        title: aliasName,
-        redirect: { title: fileInfo.title, url: fileInfo.finalUrlPath },
-      });
-    }
-  }
-  for (const list of Object.values(alphabeticalByNs)) {
-    list.sort((a, b) =>
-      sortableTitle(a.title).localeCompare(
-        sortableTitle(b.title),
-        undefined,
-        { sensitivity: "base" },
-      ),
-    );
-  }
-  const listedNamespaces = Object.keys(NAMESPACES).filter(
-    (ns) => alphabeticalByNs[ns].length > 0,
-  );
-  const nsName = (ns) => ns[0].toUpperCase() + ns.slice(1);
-
-  // ── Backlinks pre-pass ───────────────────────────────────────────────────────
-  // Scan every non-hidden page's wikilinks (after partial expansion, matching the
-  // same resolveLink logic used in the main loop) and build a map of
-  //   targetUrl → [{title, url}]   (sorted alphabetically by title)
-  // This must run BEFORE the main render loop so each page can receive its
-  // backlinkCount for the footer link.
-
-  const backlinksMap = {}; // targetUrl → [{title, url}]
-
-  for (const fileInfo of filesToProcess) {
-    if (fileInfo.hidden) continue;
-    const sourceUrl = fileInfo.finalUrlPath;
-
-    const fullMarkdown = expandPartials(fileInfo.parsed.content, partials);
-
-    fullMarkdown.replace(/(?:!?)\[\[(.*?)\]\]/g, (_match, inner) => {
-      let target = inner;
-      if (inner.includes("|")) {
-        target = inner.split("|")[0];
-      }
-      let searchTarget = target.trim();
-      const ext = path.extname(searchTarget).toLowerCase();
-      if (IMAGE_EXTENSIONS.has(ext)) return _match;
-      if (searchTarget.toLowerCase().endsWith(".md")) {
-        searchTarget = searchTarget.slice(0, -3);
-      }
-      const resolved = resolveLink(searchTarget, fileMap, index, fileInfo.nsDir);
-      if (resolved.url) {
-        if (!backlinksMap[resolved.url]) backlinksMap[resolved.url] = [];
-        // Avoid duplicates (same source linking to same target multiple times)
-        if (!backlinksMap[resolved.url].some((e) => e.url === sourceUrl)) {
-          backlinksMap[resolved.url].push({
-            title: fileInfo.title,
-            url: sourceUrl,
-          });
-        }
-      }
-      return _match;
-    });
-  }
-
-  // Sort each backlinks list article-aware alphabetically by title
-  for (const arr of Object.values(backlinksMap)) {
-    arr.sort((a, b) =>
-      sortableTitle(a.title).localeCompare(
-        sortableTitle(b.title),
-        undefined,
-        { sensitivity: "base" },
-      ),
-    );
-  }
-
-  // ── End Backlinks pre-pass ───────────────────────────────────────────────────
 
   const searchDocs = [];
 
@@ -878,13 +316,7 @@ async function build() {
         !pagesWithCategories.has(fi.finalUrlPath),
     )
     .map((fi) => ({ title: fi.title, url: fi.finalUrlPath }))
-    .sort((a, b) =>
-      sortableTitle(a.title).localeCompare(
-        sortableTitle(b.title),
-        undefined,
-        { sensitivity: "base" },
-      ),
-    );
+    .sort(compareTitles);
 
   const indexPages = [
     ...listedNamespaces.map((ns) => ({
