@@ -1,6 +1,6 @@
 # Press
 
-The bespoke static site generator for [totascriptura.org](https://totascriptura.org). It turns the site's Obsidian vault into a static HTML site for GitHub Pages. The generator is `build.js`; the layout, CSS and fonts live in `template/`.
+The bespoke static site generator for [totascriptura.org](https://totascriptura.org). It turns the site's Obsidian vault into a static HTML site for GitHub Pages. `build.js` is the entry point, the generator proper lives in `lib/`, and the layout, CSS and fonts live in `template/`.
 
 This reference was written from the code as of October 2026. It replaces the Replit-era `archive/replit.md`. Where the two disagree, this file is the correct one.
 

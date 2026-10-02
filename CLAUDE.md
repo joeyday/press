@@ -2,11 +2,12 @@
 
 A static site generator with a deliberately boring name. It turns an Obsidian-style Markdown vault into a GitHub Pages site. It was originally vibe-coded with Replit Agent; Claude now maintains it.
 
-- `build.js`: the generator and CLI entry point, a single ESM script of about 2,800 lines. **It is the source of truth.**
+- `build.js`: the CLI entry point and orchestrator (about 190 lines). It wires together the modules in `lib/`; the real logic lives there. Code is the source of truth, not the docs.
+- `lib/`: the generator, one concern per file: `vault.js` (file discovery, assets, page records), `links.js`, `partials.js`, `markdown.js`, `render.js` (Markdown → body HTML), `model.js` (categories, featured/draft, notes pairs, per-namespace lists, backlinks), `layout.js` (compiled layout, link classification), `output.js` (in-memory post-passes and the writer), `io.js`, `titles.js`, `html/` (the tag walker and the pure HTML passes), `bible/` (ref table, linker, Scripture collector) and `pages/` (one file per kind of generated page).
 - `serve.js`: the local preview server behind `press serve`.
 - `README.md`: the feature reference, written from the code. Keep it in sync whenever behaviour changes.
 - `docs/plan.md`: roadmap, missing files, verified bugs, and the Replit-doc retirement list.
-- `archive/` (`replit.md`, `replit.txt`, `project-documents/`): legacy Replit Agent docs, kept until Joey decides whether to delete them. **Don't trust them.** They have drifted from the code in many places (listed in `docs/plan.md`). Read them for intent or history only, and always check claims against `build.js`.
+- `archive/` (`replit.md`, `replit.txt`, `project-documents/`): legacy Replit Agent docs, kept until Joey decides whether to delete them. **Don't trust them.** They have drifted from the code in many places (listed in `docs/plan.md`). Read them for intent or history only, and always check claims against the code.
 
 ## Working rules
 
@@ -52,18 +53,14 @@ To release:
 
 `build()` does the following, in order:
 
-1. Copies assets flat to `dist/asset/`.
-2. Parses every `.md` file into `filesToProcess`, and builds `fileMap` and `titleMap`. Files in `partial/` go to a separate `partials` map instead and are never pages.
-3. Derives the relationship maps: aliases, featured, `featured with`, notes pages, category members, all pages.
-4. Runs a backlinks pre-pass.
-5. Renders each page: partials → wikilinks → EJS → `%%` strip → `~small~` → markdown-it → layout → `classifyLinks`.
-6. Writes the generated pages: alias redirects, backlinks pages, the four indexes, search and random.
-7. Re-reads every HTML file in `dist/` for the string-rewriting post-passes: heading IDs → Scripture collection and index pages → Bible-ref linker → abbreviations → initials → Roman numerals → divine names → ellipses → alt text.
-
-Every post-pass uses the same hand-rolled tag-splitter-plus-skip-stack pattern (`TAG_RE`). None of them skip `<head>` or `<title>`.
+1. Copies assets flat to `dist/asset/`, then parses every `.md` file (`loadVault`) into page records plus the `fileMap` and `index` lookups. Files in `partial/` go to a separate `partials` map and are never pages.
+2. `buildModel` derives the relationships: aliases, categories (a category is a page in `category/`; an empty one is unlisted), featured, `featured with`, notes pairs, the per-namespace alphabetical lists, and backlinks.
+3. Renders each page (`renderBody`: partials → wikilinks → EJS → `%%` strip → `~small~` → markdown-it), wraps it in the layout (`classifyLinks` runs on the result), and hands it to `output.emitPage`.
+4. Writes the generated pages: alias redirects, backlinks pages, the indexes, search, random and the Scripture index.
+5. Every page, content or generated, goes through the same in-memory post-passes inside `output` before its single write: heading IDs → Scripture collection (content pages only) → Bible-ref linker → abbreviations → initials → Roman numerals → divine names → ellipses → alt text. The passes share one tag-splitter (`lib/html/walk.js`). None of them skip `<head>` or `<title>`.
 
 Key helpers:
 - `resolveLink`: exact path matching for qualified links; bare names narrow to the source's folder, then `topic/`, then the root. A `notes/` folder next to a page is its notes page (`/…/foo/notes`).
 - `expandPartials`: recursive, with positional arguments. Looks up `partial/` basenames only.
-- `getFrontmatterValue`: case-insensitive key lookup.
-- `sortableTitle`: ignores leading articles when sorting.
+- `getFrontmatterValue` (`lib/vault.js`): case-insensitive key lookup.
+- `compareTitles` (`lib/titles.js`): sorts ignoring leading articles and case.
