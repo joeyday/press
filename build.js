@@ -2844,7 +2844,29 @@ async function build() {
   }
 }
 
-build().catch((err) => {
+// ─── CLI ──────────────────────────────────────────────────────────────────────
+// press [build]  build the site (what CI runs)
+// press serve    build, then serve the output locally (see serve.js)
+
+const command = process.argv[2] ?? "build";
+if (command !== "build" && command !== "serve") {
+  console.error("Usage: press [build|serve]");
+  process.exit(1);
+}
+
+try {
+  await build();
+} catch (err) {
   console.error("Build failed:", err);
   process.exit(1);
-});
+}
+
+if (command === "serve") {
+  try {
+    const { serve } = await import("./serve.js");
+    await serve(OUTPUT_DIR);
+  } catch (err) {
+    console.error(err.message);
+    process.exit(1);
+  }
+}

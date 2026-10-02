@@ -14,7 +14,11 @@ The content repo installs Press as a git dependency and runs its `press` command
 "devDependencies": { "press": "github:joeyday/press#v0.1.0" }
 ```
 
-During Press development, run `cd vault && node ../build.js` (see `CLAUDE.md`).
+Commands (run from the vault root):
+- `press` or `press build`: build the site (what CI runs).
+- `press serve`: build, then serve the output at <http://localhost:4000/> until Ctrl-C. `serve.js` mimics GitHub Pages: `/foo/` serves `foo/index.html`, `/foo` redirects to `/foo/`, and unmatched URLs get `404.html` with a 404 status. It binds to localhost, the port is hardcoded, and it doesn't rebuild on changes.
+
+For a local `press` command, run `npm link` once in the Press repo. During Press development you can also run `cd vault && node ../build.js` (see `CLAUDE.md`).
 
 The vault scan, `abbreviations.json`, `alt-text.json` are resolved from the **working directory**. Output goes to `./dist`, or to the directory named by the `PRESS_OUT` environment variable if set. CI sets nothing; locally it keeps build output out of the iCloud-synced vault (for example `export PRESS_OUT="$HOME/Projects/press/out"` in `~/.zshrc`). The template is resolved from Press's own directory.
 

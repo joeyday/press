@@ -2,7 +2,8 @@
 
 A static site generator with a deliberately boring name. It turns an Obsidian-style Markdown vault into a GitHub Pages site. It was originally vibe-coded with Replit Agent; Claude now maintains it.
 
-- `build.js`: the entire generator, a single ESM script of about 2,800 lines. **It is the source of truth.**
+- `build.js`: the generator and CLI entry point, a single ESM script of about 2,800 lines. **It is the source of truth.**
+- `serve.js`: the local preview server behind `press serve`.
 - `README.md`: the feature reference, written from the code. Keep it in sync whenever behaviour changes.
 - `docs/plan.md`: roadmap, missing files, verified bugs, and the Replit-doc retirement list.
 - `archive/` (`replit.md`, `replit.txt`, `project-documents/`): legacy Replit Agent docs, kept until Joey decides whether to delete them. **Don't trust them.** They have drifted from the code in many places (listed in `docs/plan.md`). Read them for intent or history only, and always check claims against `build.js`.
@@ -14,7 +15,8 @@ A static site generator with a deliberately boring name. It turns an Obsidian-st
 - Build speed is a first-class goal. Don't add another full pass over the corpus without a reason.
 - The site's *content* lives in a separate vault repo. The generator's code lives here, even though that code is site-specific.
 - Match the existing style: 2-space indent, double quotes, trailing commas, Prettier-ish wrapping, `// ─── Section ───` banners, and explanatory comments on the non-obvious regexes.
-- Nothing is committed yet (no commits on `main`). Only commit when asked.
+- Only commit when asked. Pushing tags or touching the content repo needs Joey's explicit go-ahead.
+- For test builds, set `PRESS_OUT` to the scratchpad. `~/.press/dist` (Joey's own `PRESS_OUT`) is outside my default workspace.
 
 ## Running and testing
 
