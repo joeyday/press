@@ -89,24 +89,6 @@ footer a,
 /* End CSS reset */
 
 	
-@font-face {
-    font-family: Entypo;
-    src: url('/asset/entypo.eot');
-    src: url('/asset/entypo.eot?#iefix') format('embedded-opentype'),
-         url('/asset/entypo.woff') format('woff'),
-         url('/asset/entypo.ttf') format('truetype'),
-         url('/asset/entypo.svg') format('svg');
-}
-
-@font-face {
-    font-family: Entypo Social;
-    src: url('entypo/entypo-social.eot');
-    src: url('entypo/entypo-social.eot?#iefix') format('embedded-opentype'),
-         url('entypo/entypo-social.woff') format('woff'),
-         url('entypo/entypo-social.ttf') format('truetype'),
-         url('entypo/entypo-social.svg') format('svg');
-}
-    
 :root {
     /* max widths at the two different breakpoints */
     --main-small-max-width: 412px; /* iPhone Pro Max logical width */
@@ -314,7 +296,7 @@ main {
         color: var(--color-primary);
     }
     
-    a.external, a.rtBibleRef {
+    a.external {
         color: var(--color-secondary);
     }
     
@@ -434,7 +416,6 @@ main {
     	text-decoration: none;
     }
 
-    .entypo-icon,
     .featured-badge {
         cursor: default;
     }
@@ -575,7 +556,6 @@ main {
             padding: 0;
 
             span {
-                font-family: Entypo;
                 font-size: 210%;
                 cursor: default;
                 line-height: 1rem;

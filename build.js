@@ -4,6 +4,7 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import slugify from "slugify";
+import { BuildError } from "./lib/errors.js";
 import { createLayout } from "./lib/layout.js";
 import { findCategory } from "./lib/links.js";
 import { buildModel, nsName } from "./lib/model.js";
@@ -66,7 +67,7 @@ async function build() {
     draftUrls,
     featuredUrls,
     categoryUrls,
-    asideUrls,
+    notesUrls,
     alphabeticalByNs,
     listedNamespaces,
     backlinksMap,
@@ -76,7 +77,7 @@ async function build() {
     template: await fs.readFile(TEMPLATE_PATH, "utf-8"),
     draftUrls,
     categoryUrls,
-    asideUrls,
+    notesUrls,
     featuredUrls,
     allKnownUrls,
     cacheBust: cacheBuster(),
@@ -135,7 +136,7 @@ async function build() {
       finalHtml,
       fileInfo.unlisted ||
         categoryUrls.has(fileInfo.finalUrlPath) ||
-        asideUrls.has(fileInfo.finalUrlPath)
+        notesUrls.has(fileInfo.finalUrlPath)
         ? null
         : { url: fileInfo.finalUrlPath, title: fileInfo.title },
     );
@@ -191,7 +192,7 @@ if (command !== "build" && command !== "serve") {
 try {
   await build();
 } catch (err) {
-  console.error("Build failed:", err);
+  console.error("Build failed:", err instanceof BuildError ? err.message : err);
   process.exit(1);
 }
 

@@ -31,7 +31,7 @@ tsgen is a bespoke, single-site tool. There are three goals: **(a)** split `buil
 
 Every refactor step must leave `dist/` **byte-identical**. Bug fixes and hardcoding changes that alter output go in separate commits, and each one's diff is reviewed on its own.
 
-`vault/` and `baseline/dist` were migrated to the notes layout on 2026-10-02. Until the real vault is migrated, run `node ../scripts/migrate-vault.mjs --apply` inside `vault/` after every refresh, then regenerate the baseline.
+The real vault was migrated to the namespace layout (notes folders, `summary/`, listed meta pages) as of v0.3.3, and `vault/` copies it. A fresh `rsync` needs no migration, apart from the `aliases` on two notes pages (the next item); `scripts/migrate-vault.mjs` is a no-op otherwise.
 
 Refresh `vault/` with:
 ```sh
@@ -133,15 +133,15 @@ The feature is called **partials** everywhere in the code (`expandPartials`, `sp
 
 The HTML comments for missing and circular partials say "partial" too (changed in a separate commit after the refactor tied out). `![[image]]` is Obsidian's image embed, a different feature, and keeps its name. The vault still has seven `{{[[violation-goals]]}}`/`{{[[draft]]}}` references to partials that don't exist; they sit in hidden pages, so they are silent.
 
-### Notes pages and namespaces (code done 2026-10-02; vault migration pending)
+### Notes pages and namespaces (done; live since v0.3.0)
 Every top-level folder is a namespace, and each can have a `notes/` folder next to its pages (plus a root `notes/` for root pages). `<dir>/notes/X.md` is the notes page for `<dir>/X.md`, at the URL `<page url>/notes`. `aside of`, `asidesMap` and the "Could not find aside of target" warning are gone, and `resolveLink` matches qualified links by exact path and narrows bare names to the source's folder, then `topic/`, then the root. The layout's "Topic" label is the page's folder name ("Article" for root pages). Old `/notes/…` URLs are not redirected, on purpose.
 
-**Before tagging a release that includes this**, run `scripts/migrate-vault.mjs` on the real vault (dry run first, on a copy, never while Obsidian has it open) and commit the result in the content repo together with the tag bump. Against the `vault/` copy it moves 96 notes (92 to `topic/notes/`, 1 to `reading/notes/`, 4 whose page doesn't exist yet to `topic/notes/`; 2 stay in the root `notes/`) and rewrites 6 links. It renames `Epistemolgy` and `Heirs of God (notes)` to match their pages. Verified on a migrated copy: every page outside `notes/` is identical to the baseline after mapping the old note URLs, apart from the nav label (`Category`, `Article`, …), tie order in a few backlinks lists, and the renamed notes. Also still open: the link class `aside` and the `isEmbed` name are unchanged, and the `Topic` nav `li` keeps its `topic` CSS class.
+Old `/notes/…` URLs are not redirected, on purpose. The vault copy refreshed on 2026-10-02 has no aliases on notes pages and the migration script is a no-op on it. Still open: the `isEmbed` name is unchanged, and the `Topic` nav `li` keeps its `topic` CSS class.
 
-### Per-namespace alphabetical indexes (code done 2026-10-02; vault flags pending)
+### Per-namespace alphabetical indexes (done; live since v0.3.0)
 Each namespace (`topic`, `category`, `commentary`, `summary`, and `meta` for the root) has its own list at `/index/alphabetical/{namespace}`, with a menu to the others at the top. `/index/alphabetical` redirects to the Topic list. A namespace with nothing listed doesn't exist: no page, no menu entry. The nav tab says "Topic page", "Meta page" and so on. The random pool is every list except `category`.
 
-**Vault migration still to do (content repo, with the release; `scripts/migrate-vault.mjs` does all of it, including the notes move above):** remove `unlisted` from `About`, `Colophon`, `NTOT`, `OTNT`, `Home page` and the four `commentary/` pages, so they get listed. Keep it on `404` and `Sandbox`. The five `reading/` pages are still `hidden`. Rename the folder to `summary/` (below), then un-hide them as they become real, and the Summaries list appears by itself.
+The vault flags were migrated in v0.3.3: `unlisted` is gone from `About`, `Colophon`, `NTOT`, `OTNT`, `Home page` and the commentary pages, and kept on `404` and `Sandbox`. The `summary/` pages are still `hidden`; un-hide them as they become real and the Summaries list appears by itself.
 
 Open: the Scripture index and search include a namespace's pages whenever they're not unlisted. Check that's what you want for `commentary/` and `meta`. Whether `unlisted` should survive at all (it would cover only `404`, `Sandbox` and the auto-unlisted empty categories) is for later.
 
@@ -152,36 +152,29 @@ Today the random pool is just the alphabetical lists (minus `category`), so `unl
 - Generated index pages say "Meta page" in the nav tab. They should say "Index page".
 - Generated pages never have notes pages, so the "Notes" tab shouldn't be shown for them (best: not in the DOM at all). Needs a layout flag or a separate path for generated pages.
 
-### Rename `reading/` to `summary/` (decided 2026-10-02; code done, vault pending)
-`reading/` becomes `summary/` (menu label "Summaries", nav tab "Summary page"). A summary page summarises the main arguments and Scripture citations of a book or article. Its notes page, like a commentary's, holds Joey's own observations and collected material. The code already expects `summary/`, so until the vault folder is renamed those five pages (all `hidden`) aren't in any list. `scripts/migrate-vault.mjs` renames the folder, rewrites `[[reading/…]]` links and renames the `Book notes` / `Article notes` categories to `Book summaries` / `Article summaries`. Those two categories still have no pages; their members are hidden, so the build is silent about it.
+### `reading/` is now `summary/` (done; live since v0.3.0)
+Menu label "Summaries", nav tab "Summary page". A summary page summarises the main arguments and Scripture citations of a book or article. Its notes page, like a commentary's, holds Joey's own observations and collected material. The `Book summaries` / `Article summaries` categories have no pages yet; their members are hidden, so the build is silent about it.
 
 ### Template: stays in the vault or moves here?
 `template/` holds the layout, CSS, JS and fonts. Content editors probably shouldn't need to touch it. If it moves to tsgen, the vault becomes pure content.
 
 ## 2. Verified bugs and surprises
 
-Each item below was reproduced on 2026-10-01 in a scratch vault. None are fixed yet. They are listed roughly by user impact.
+Each item below was reproduced on 2026-10-01 in a scratch vault. The fixed ones are deleted. They are listed roughly by user impact.
 
-- **Bible-ref false positives.** `BIBLE_REF_RE` is case-insensitive. "I am 30 years old" links to Amos 30, and "my job 2 years ago" links to Job 2. These also land in the Scripture index.
+- **Bible-ref false positives.** Matching is now case-sensitive, so "I am 30 years old" no longer links. A capitalised word still does: "Job 2 years ago" links to Job 2, and it lands in the Scripture index.
 - **Distant translation capture.** In "Romans 3:23 is a great verse. Later the KJV renders it…", the KJV link applies to Romans 3:23. There is no adjacency requirement, unlike continuation refs.
 - **"Romans 3, 5"** is read as Romans 3:5, not chapters 3 and 5. The linker and the Scripture collector agree, so this is at least consistent.
 - **Uppercase words read as Roman numerals:** `MD`, `DC`, `MIX`, `CD`, `CV`, `LI`, …
 - **`~small~`, `%%comments%%`, wikilinks and partials are processed inside code spans and blocks.** `` `~x~` `` renders as literal `<small>x</small>`.
 - **Backlinks count links inside `%%comments%%`** and self-links. The pre-pass runs before comment stripping.
 - **Capitalised frontmatter keys** such as `Title:` give an empty `frontmatter.title` in the template.
-- **Hidden pages' aliases still produce redirect stubs** to a non-existent page.
 - **Path-qualified image wikilinks** (`[[topic/pic.png]]`) aren't resolved and emit a relative href.
 - **`[[Page#Heading]]` is unsupported** and renders as broken.
 - **`dist/` isn't cleaned.** Stale pages survive. On rebuilds the old Scripture-index files are post-processed twice in one run (23 vs 18 files processed in the test).
 - **Unescaped interpolation** in several places: abbreviation `title`, image `alt`, alias redirect titles, fenced-div attributes, and search results (`innerHTML`). `$` in embed arguments is treated as a replacement pattern.
 - **A non-string `title` or `permalink`** (for example `title: 1984`) would throw. This was found by reading the code, not reproduced.
 
-Found in the full code review (2026-10-02), each reproduced in a scratch vault:
-- **An alias redirect overwrites a real page** at the same URL (alias stubs are written after the pages). No warning.
-- **Two pages can share a URL** (`C++.md` and `C.md` both slugify to `c`) and the later one silently wins. Same for `index.byPath` on case-insensitive duplicates.
-- **A failed EJS render publishes a blank page.** Only a warning is logged and the build exits 0.
-- **Pages outside the five namespaces build silently** but appear in no list, with an odd nav label: nested folders (`topic/sub/X.md`) and `reading/` until it is renamed.
-- The link classes `draft`, `category`, `aside`, `featured` and `internal` have no CSS rules; only `external`, `broken` and the leftover `rtBibleRef` are styled. The Entypo `@font-face` rules are unused (and the Entypo Social URLs are relative and broken), and `font-awesome.min.css`, `fontello.css` and most of `template/fonts/` (516 KB) aren't referenced by the layout, which uses the Font Awesome kit.
 
 **Dead or misleading code** to clean up when touched:
 - `SKIP_FILES` (`replit.md`) and `ASSET_SKIP_FILES` (`build.js`) are dead.
@@ -192,18 +185,9 @@ Found in the full code review (2026-10-02), each reproduced in a scratch vault:
 - The "slugify not initialised" comment on `_initBookCwmsToInfo` is wrong: ESM imports are hoisted.
 
 ### Open questions for Joey (from the 2026-10-02 code review)
-Unanswered until an answer is written next to the question. Delete a question once its answer has been acted on.
+Delete a question once its answer has been acted on.
 
-1. **Body EJS:** only `Colophon.md` and `partial/mt.md` use it, and a failed render blanks the page. Keep it, or replace those two uses and drop body EJS?
-2. **Collisions** (an alias redirect or a slug clash overwriting a page): warn, or fail the build? (Recommendation: fail.)
-3. **Folders:** are subfolders inside `topic/` and the other namespaces planned? If not, an unknown folder should be a build error.
-4. **Link classes and legacy assets:** does anything outside `style.css` use the link classes `draft`, `category`, `aside` and `featured`? Are the old fonts, `fontello.css`, `font-awesome.min.css`, the Entypo `@font-face` rules and the `rtBibleRef` rule safe to delete?
-5. **Bible-ref case:** is case-insensitive matching deliberate? "I am 30 years old" links to Amos 30. Do you ever write lowercase refs such as `rom 3:23`?
-6. **Scripture index labels:** the `<dt>` labels such as "Ro 3:23" are auto-linked to ref.ly by the linker. Intended?
-8. **iCloud:** an evicted `.icloud` placeholder silently drops a page from a local build. Do you ever build with files not downloaded? A check is about five lines.
-9. **Aliases on notes pages** redirect at `/topic/notes/<alias>`. Intended?
-10. **Copyright line** renders "2009–26" (two-digit year). Deliberate?
-11. **`~text~`** also fires between two tildes in a URL (`~user`) or prose ("~50 to ~60"). Has that ever bitten you?
+11. **`~text~` and small text** (Joey, 2026-10-02: no problems so far; open to ignoring stray tildes, and to a battle-tested syntax if CommonMark has one, but typing `<small>` is a non-starter). Idea: make a parenthetical on content pages small implicitly. A survey of `vault/` on 2026-10-02 found 502 parentheticals already wrapped in `~…~` on content pages and **101 bare ones** (notes pages are mostly bare, 994 vs 146, so the rule would be content pages only). Not a "very small number"; the bare ones are a mix, so the rule would need an opt-out.
 
 ## 3. Retire the Replit docs
 

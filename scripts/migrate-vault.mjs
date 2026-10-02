@@ -1,4 +1,4 @@
-// One-off migration for the namespace release. Three steps:
+// One-off migration for the namespace release. Four steps:
 //
 // 1. Global notes/ → per-namespace notes folders:
 //      notes/X.md  (aside of: [[topic/Y]])  →  topic/notes/Y.md
@@ -11,6 +11,9 @@
 // 3. Frontmatter: drop `unlisted: true` from the pages that now get their own
 //    alphabetical lists, and rename the Book notes / Article notes categories
 //    to Book summaries / Article summaries.
+//
+// 4. Frontmatter: drop `aliases` from notes pages. The build gives a notes page
+//    its page's aliases (/topic/alias/notes) and fails if it has its own.
 //
 // Run from the vault root. Dry run by default; pass --apply to change files.
 //
@@ -162,6 +165,10 @@ function editFrontmatter(from, text) {
       .split(/\r?\n/)
       .filter((l) => !/^unlisted:\s*true\s*$/i.test(l))
       .join(eol);
+  }
+  // Notes pages get their page's aliases at build time and can't have their own.
+  if (/(^|\/)notes\//.test(from)) {
+    lines = lines.replace(/^aliases:.*(?:\r?\n(?:[ \t]+.*|- .*))*(?:\r?\n|$)/im, "");
   }
   for (const [a, b] of CATEGORY_RENAMES) lines = lines.replaceAll(a, b);
   if (lines === fm[1]) return text;
