@@ -1578,13 +1578,13 @@ function expandPartials(text, partials, seen = new Set()) {
 
       if (seen.has(key)) {
         console.warn(`Warning: Circular partial detected — "${name}"`);
-        return `<!-- circular embed: ${name} -->`;
+        return `<!-- circular partial: ${name} -->`;
       }
 
       let partial = partials[key];
       if (partial === undefined) {
         console.warn(`Warning: Partial not found — "${name}"`);
-        return `<!-- embed not found: ${name} -->`;
+        return `<!-- partial not found: ${name} -->`;
       }
 
       const args = argsStr ? splitPartialArgs(argsStr) : [];

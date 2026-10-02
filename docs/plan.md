@@ -133,7 +133,7 @@ Joey to confirm each. The evidence comes from the survey above.
 ### Partials (done 2026-10-02)
 The feature is called **partials** everywhere in the code (`expandPartials`, `splitPartialArgs`, the `partials` map). Only `partial/` is consulted, by basename; everything in it is a partial and never a page, and its frontmatter is ignored, so the vault can drop it gradually. Verified byte-identical against the baseline.
 
-Still to do, deliberately held back because it changes `dist/`: rename the HTML comments `<!-- embed not found: x -->`, `<!-- circular embed: x -->` to say "partial". Once the refactor ties out, do this as its own commit. `![[image]]` is Obsidian's image embed, a different feature, and keeps its name. The vault still has seven `{{[[violation-goals]]}}`/`{{[[draft]]}}` references to partials that don't exist; they sit in hidden pages, so they are silent.
+The HTML comments for missing and circular partials say "partial" too (changed in a separate commit after the refactor tied out). `![[image]]` is Obsidian's image embed, a different feature, and keeps its name. The vault still has seven `{{[[violation-goals]]}}`/`{{[[draft]]}}` references to partials that don't exist; they sit in hidden pages, so they are silent.
 
 ### Template: stays in the vault or moves here?
 `template/` holds the layout, CSS, JS and fonts. Content editors probably shouldn't need to touch it. If it moves to Press, the vault becomes pure content.
