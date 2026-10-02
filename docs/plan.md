@@ -176,12 +176,37 @@ Each item below was reproduced on 2026-10-01 in a scratch vault. None are fixed 
 - **Unescaped interpolation** in several places: abbreviation `title`, image `alt`, alias redirect titles, fenced-div attributes, and search results (`innerHTML`). `$` in embed arguments is treated as a replacement pattern.
 - **A non-string `title` or `permalink`** (for example `title: 1984`) would throw. This was found by reading the code, not reproduced.
 
+Found in the full code review (2026-10-02), each reproduced in a scratch vault:
+- **An alias redirect overwrites a real page** at the same URL (alias stubs are written after the pages). No warning.
+- **Two pages can share a URL** (`C++.md` and `C.md` both slugify to `c`) and the later one silently wins. Same for `index.byPath` on case-insensitive duplicates.
+- **A failed EJS render publishes a blank page.** Only a warning is logged and the build exits 0.
+- **The "Backlinks" tab on generated pages is a dead link** (relative `href="backlinks"`): `/index/featured/backlinks` and `/x/backlinks/backlinks` don't exist. `backlinkUrl` and `backlinkCount` are computed and passed to the layout, which never reads them.
+- **Pages outside the five namespaces build silently** but appear in no list, with an odd nav label: nested folders (`topic/sub/X.md`) and `reading/` until it is renamed.
+- **`Date.now()` appears 18 times in the layout, once per asset reference,** in the layout as cache-busters, so every build changes every page and pages can disagree by a second.
+- The link classes `draft`, `category`, `aside`, `featured` and `internal` have no CSS rules; only `external`, `broken` and the leftover `rtBibleRef` are styled. The Entypo `@font-face` rules are unused (and the Entypo Social URLs are relative and broken), and `font-awesome.min.css`, `fontello.css` and most of `template/fonts/` (516 KB) aren't referenced by the layout, which uses the Font Awesome kit.
+
 **Dead or misleading code** to clean up when touched:
+- `titleMap`, `urlToFileInfo`, `SKIP_FILES` (`replit.md`) and `ASSET_SKIP_FILES` (`build.js`) are dead.
 - The `TRANSLATIONS` Set is unused (the list is duplicated three times as regexes).
 - The `osis` field is unused.
 - The `permalink === ""` homepage branch is unreachable.
 - Scripture URLs are added to `allKnownUrls` after all link classification has already run.
 - The "slugify not initialised" comment on `_initBookCwmsToInfo` is wrong: ESM imports are hoisted.
+
+### Open questions for Joey (from the 2026-10-02 code review)
+Unanswered until an answer is written next to the question. Delete a question once its answer has been acted on.
+
+1. **Body EJS:** only `Colophon.md` and `partial/mt.md` use it, and a failed render blanks the page. Keep it, or replace those two uses and drop body EJS?
+2. **Collisions** (an alias redirect or a slug clash overwriting a page): warn, or fail the build? (Recommendation: fail.)
+3. **Folders:** are subfolders inside `topic/` and the other namespaces planned? If not, an unknown folder should be a build error.
+4. **Link classes and legacy assets:** does anything outside `style.css` use the link classes `draft`, `category`, `aside` and `featured`? Are the old fonts, `fontello.css`, `font-awesome.min.css`, the Entypo `@font-face` rules and the `rtBibleRef` rule safe to delete?
+5. **Bible-ref case:** is case-insensitive matching deliberate? "I am 30 years old" links to Amos 30. Do you ever write lowercase refs such as `rom 3:23`?
+6. **Scripture index labels:** the `<dt>` labels such as "Ro 3:23" are auto-linked to ref.ly by the linker. Intended?
+7. **Cache-busters:** replace the 18 `Date.now()` calls with one build timestamp (or a content hash)? That also makes builds deterministic.
+8. **iCloud:** an evicted `.icloud` placeholder silently drops a page from a local build. Do you ever build with files not downloaded? A check is about five lines.
+9. **Aliases on notes pages** redirect at `/topic/notes/<alias>`. Intended?
+10. **Copyright line** renders "2009–26" (two-digit year). Deliberate?
+11. **`~text~`** also fires between two tildes in a URL (`~user`) or prose ("~50 to ~60"). Has that ever bitten you?
 
 ## 3. Retire the Replit docs
 
