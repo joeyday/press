@@ -60,6 +60,7 @@ main .main-topic a:hover,
 main h3 + p a:hover,
 main h3 + .main-topic + p a:hover,
 main .quick-nav a:hover,
+main .namespace-menu a:hover,
 .categories a:hover,
 header:not(article *) a:hover,
 nav:not(article *) a:hover,
@@ -74,6 +75,7 @@ main .main-topic a,
 main h3 + p a,
 main h3 + .main-topic + p a,
 main .quick-nav a,
+main .namespace-menu a,
 .categories a,
 header:not(article *) a,
 nav:not(article *) a,
@@ -522,6 +524,34 @@ main {
         }
     }
 
+    /* Namespace menu on the alphabetical indexes. Styled like .quick-nav. */
+    .namespace-menu {
+        font-size: 1rem;
+        font-family: var(--font-secondary);
+        margin: 0 0 1rem;
+        padding: 0;
+        text-align: center;
+
+        li {
+            display: inline;
+            margin: 0;
+            padding: 0;
+            list-style-type: none;
+
+            &::after {
+                content: ' · ';
+            }
+
+            &:last-child::after {
+                content: '';
+            }
+
+            &.selected {
+                font-weight: bold;
+            }
+        }
+    }
+
     .message {
         border: 1px solid var(--color-main-stroke);
         background-color: var(--color-main-tint-background);
@@ -967,7 +997,7 @@ footer {
 }
 
 .index.alphabetical article {
-	li {
+	ul:not(.namespace-menu) li {
 		color: var(--color-main-text-muted);
 	}
 

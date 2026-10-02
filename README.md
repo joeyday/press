@@ -59,10 +59,10 @@ Keys are matched case-insensitively for every property below. The template, howe
 | `hidden` | No page is generated. Hidden pages are left out of every index, search, the random pool, backlinks, notes links and categories, and links to them get the `broken` class. *Their `aliases` still produce redirect stubs.* |
 | `unlisted` | The page is built and links to it count as valid. It is left out of all index pages (including the Scripture index), search, the random pool, featured/featured-with, and category membership. It still takes part in notes links and backlinks. |
 | `draft` | Listed on `/index/drafts`. Links to it get the `draft` class. |
-| `featured` | Listed on `/index/featured`. Gets a star on `/index/alphabetical`. Links to it get the `featured` class. |
+| `featured` | Listed on `/index/featured`. Gets a star on the alphabetical indexes. Links to it get the `featured` class. |
 | `featured with` | Value is a page name or `[[wikilink]]`. Shown as "(and …)" after the target on `/index/featured`. Gets a star on the alphabetical index. |
 | `categories` | A string or list of page names/`[[wikilinks]]`, each naming a page in `category/`, by basename or as `category/Name` (case-insensitive). A page in `category/` is a category page. A category with no listed members is made `unlisted` automatically, which can empty its parent category in turn. A name with no matching page logs a warning and renders as a broken link. |
-| `aliases` | A string or list. Each alias writes a meta-refresh redirect at `/{relDir}/{slugify(alias)}`, is listed on the alphabetical index as "Alias (see Title)", and works as a wikilink target. |
+| `aliases` | A string or list. Each alias writes a meta-refresh redirect at `/{relDir}/{slugify(alias)}`, is listed on its namespace's alphabetical index as "Alias (see Title)", and works as a wikilink target. |
 
 For all page-name values, `[[Page|Display]]` is reduced to `Page`.
 
@@ -103,7 +103,7 @@ Steps 1–6 are plain regex passes over the raw Markdown. They also apply inside
 `frontmatter`, `bodyClasses`, `content`, `nsLabel`, `isNote`, `notePage`, `noteUrl`, `categories`, `subcategories`, `pages`, `featured`, `featuredWith`, `backlinkUrl` and `backlinkCount`.
 
 - `bodyClasses`: the URL's path segments, or `["home"]` for `/`.
-- `nsLabel`: the page's folder name, capitalised (`Topic`, `Commentary`), or `Article` for root pages. A notes page uses its page's folder.
+- `nsLabel`: the page's folder name, capitalised, plus " page" (`Topic page`, `Commentary page`), or `Meta page` for root pages and generated pages. A notes page uses its page's folder.
 - `isNote`: true for a notes page. `notePage` is `{url}` of its page (null when the page doesn't exist or is hidden). `noteUrl` is a page's notes URL, or null.
 - `categories`, `subcategories`, `pages`: arrays of `{title,url}`. `subcategories` holds members that are category pages, and `pages` holds the rest.
 - `featured`: true only for `featured: true`.
@@ -115,14 +115,14 @@ Steps 1–6 are plain regex passes over the raw Markdown. They also apply inside
 - **Backlinks**: `/{url}/backlinks` (or `/backlinks` for `/`) for every non-hidden page. Sources are all non-hidden pages whose wikilinks resolve to the page. This is counted on partial-expanded Markdown, *before* comment stripping or EJS. It counts self-links and links inside `%%comments%%`.
 - **Alias redirects**: written after the pages, with no collision check.
 - **Indexes**:
-  - `/index/alphabetical`: pages that are not hidden, unlisted, notes pages or category pages, plus their aliases.
+  - `/index/alphabetical/{namespace}`: one list per namespace, for `topic`, `category`, `commentary`, `summary` and `meta` (the root). Each lists that folder's pages that are not hidden, unlisted or notes pages, plus their aliases. A namespace with nothing listed has no page and no menu entry. Each list starts with a menu linking to the other namespaces' lists. `/index/alphabetical` is a stub that redirects to the Topic list.
   - `/index/categorical`: a flat list of top-level category pages only: category pages that are not hidden, not unlisted (so not empty) and not themselves in a category.
   - `/index/featured`
   - `/index/drafts`
 
   All lists are sorted ignoring a leading "A/An/The" and ignoring case.
 - **Search**: `/search`, plus `dist/search.js` and `dist/search-index.json`. The index holds `{id,title,url,body}` for non-hidden, non-unlisted pages, with the body limited to the first 5000 characters of tag-stripped text. Searches use MiniSearch with prefix matching, fuzzy 0.2 and a 2× title boost. The `?q=` parameter stays in sync with the search box.
-- **Random**: `/random` redirects on the client to a random page from the alphabetical-index pool. Its body (a Proverbs 16:33 quotation) is hardcoded.
+- **Random**: `/random` redirects on the client to a random page from the alphabetical-index pool, minus the `category` namespace. Its body (a Proverbs 16:33 quotation) is hardcoded.
 - **Scripture index**: `/index/scripture` lists the referenced books. `/index/scripture/{book-slug}` is a `<dl>` with one `<dt>` per unique reference, which links to each page or section where that reference appears. References come from content pages that are not unlisted, category pages or asides.
 
 ## Post-processing (every `.html` under `dist/`, in order)

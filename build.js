@@ -1965,9 +1965,6 @@ async function build() {
   const hiddenUrls = new Set(
     filesToProcess.filter((f) => f.hidden).map((f) => f.finalUrlPath),
   );
-  const unlistedUrls = new Set(
-    filesToProcess.filter((f) => f.unlisted).map((f) => f.finalUrlPath),
-  );
   const allKnownUrls = new Set([
     ...Object.values(fileMap)
       .flat()
@@ -2038,7 +2035,7 @@ async function build() {
         frontmatter: fm,
         bodyClasses,
         content,
-        nsLabel: locals.nsLabel || "Article",
+        nsLabel: locals.nsLabel || "Meta page",
         isNote: locals.isNote || false,
         notePage: locals.notePage || null,
         noteUrl: locals.noteUrl || null,
@@ -2053,32 +2050,52 @@ async function build() {
     );
   }
 
-  const allPages = [];
+  // ─── Namespaces ───
+  // Each top-level folder is a namespace with its own alphabetical index; root
+  // pages are "meta". A namespace with nothing listed has no index page.
+  // The keys set the menu order; the values are the menu labels.
+  const NAMESPACES = {
+    topic: "Topics",
+    category: "Categories",
+    commentary: "Commentaries",
+    summary: "Summaries",
+    meta: "Meta",
+  };
+  const alphabeticalByNs = Object.fromEntries(
+    Object.keys(NAMESPACES).map((ns) => [ns, []]),
+  );
   for (const fileInfo of filesToProcess) {
     if (fileInfo.isNote) continue;
     if (fileInfo.hidden) continue;
     if (fileInfo.unlisted) continue;
-    if (fileInfo.isCategory) continue;
+    const list = alphabeticalByNs[fileInfo.relDir || "meta"];
+    if (!list) continue;
 
-    allPages.push({
+    list.push({
       title: fileInfo.title,
       url: fileInfo.finalUrlPath,
       featured: fileInfo.featured || !!fileInfo.featuredWith,
     });
     for (const aliasName of fileInfo.aliases) {
-      allPages.push({
+      list.push({
         title: aliasName,
         redirect: { title: fileInfo.title, url: fileInfo.finalUrlPath },
       });
     }
   }
-  allPages.sort((a, b) =>
-    sortableTitle(a.title).localeCompare(
-      sortableTitle(b.title),
-      undefined,
-      { sensitivity: "base" },
-    ),
+  for (const list of Object.values(alphabeticalByNs)) {
+    list.sort((a, b) =>
+      sortableTitle(a.title).localeCompare(
+        sortableTitle(b.title),
+        undefined,
+        { sensitivity: "base" },
+      ),
+    );
+  }
+  const listedNamespaces = Object.keys(NAMESPACES).filter(
+    (ns) => alphabeticalByNs[ns].length > 0,
   );
+  const nsName = (ns) => ns[0].toUpperCase() + ns.slice(1);
 
   // ── Backlinks pre-pass ───────────────────────────────────────────────────────
   // Scan every non-hidden page's wikilinks (after partial expansion, matching the
@@ -2252,10 +2269,8 @@ async function build() {
     const finalHtml = renderLayout(htmlContent, {
       url: fileInfo.finalUrlPath,
       frontmatter: fileInfo.parsed.data,
-      // The page's folder names its namespace: "topic" → "Topic". Root pages: "Article".
-      nsLabel: fileInfo.nsDir
-        ? fileInfo.nsDir[0].toUpperCase() + fileInfo.nsDir.slice(1)
-        : "Article",
+      // The page's folder names its namespace: "topic" → "Topic page". Root pages: "Meta page".
+      nsLabel: `${nsName(fileInfo.nsDir || "meta")} page`,
       isNote: fileInfo.isNote,
       notePage: pageByNotes[fileInfo.finalUrlPath] || null,
       noteUrl: notesByPage[fileInfo.finalUrlPath] || null,
@@ -2392,7 +2407,12 @@ async function build() {
     );
 
   const indexPages = [
-    { slug: "alphabetical", title: "Alphabetical index", items: allPages },
+    ...listedNamespaces.map((ns) => ({
+      slug: `alphabetical/${ns}`,
+      title: `Alphabetical index: ${nsName(ns)} pages`,
+      items: alphabeticalByNs[ns],
+      menuNs: ns,
+    })),
     {
       slug: "categorical",
       title: "Categorical index",
@@ -2404,6 +2424,16 @@ async function build() {
 
   for (const indexPage of indexPages) {
     let listHtml = "";
+    if (indexPage.menuNs) {
+      listHtml += '<ul class="namespace-menu">\n';
+      for (const ns of listedNamespaces) {
+        listHtml +=
+          ns === indexPage.menuNs
+            ? `  <li class="selected">${NAMESPACES[ns]}</li>\n`
+            : `  <li><a href="/index/alphabetical/${ns}">${NAMESPACES[ns]}</a></li>\n`;
+      }
+      listHtml += "</ul>\n";
+    }
     if (indexPage.items.length === 0) {
       listHtml += "<p>No pages yet.</p>";
     } else {
@@ -2413,7 +2443,7 @@ async function build() {
           listHtml += `  <li>${item.title} <small>(see <a href="${item.redirect.url}">${item.redirect.title}</a>)</small></li>\n`;
         } else {
           const starHtml =
-            indexPage.slug === "alphabetical" && item.featured
+            indexPage.menuNs && item.featured
               ? ' <span class="featured-badge fa-sharp fa-solid fa-star"></span>'
               : "";
           let withHtml = "";
@@ -2441,6 +2471,29 @@ async function build() {
     await ensureDir(outDir);
     await fs.writeFile(path.join(outDir, "index.html"), html);
     console.log(`Built (index): /index/${indexPage.slug}`);
+  }
+
+  // /index/alphabetical is a stub that sends visitors to the Topic index.
+  {
+    const toUrl = "/index/alphabetical/topic";
+    const outDir = path.join(OUTPUT_DIR, "index", "alphabetical");
+    await ensureDir(outDir);
+    await fs.writeFile(
+      path.join(outDir, "index.html"),
+      `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="refresh" content="0; url=${toUrl}">
+  <link rel="canonical" href="${toUrl}">
+  <title>Redirecting to the alphabetical index</title>
+</head>
+<body>
+  <p>Redirecting to the <a href="${toUrl}">alphabetical index</a>...</p>
+</body>
+</html>`,
+    );
+    console.log(`Built (index): /index/alphabetical -> ${toUrl}`);
   }
 
   await fs.writeFile(
@@ -2523,7 +2576,9 @@ async function build() {
   console.log("Built: /search");
 
   // Randomizer page — picks a random content page and redirects immediately
-  const randomUrls = allPages
+  const randomUrls = listedNamespaces
+    .filter((ns) => ns !== "category")
+    .flatMap((ns) => alphabeticalByNs[ns])
     .filter((item) => item.url) // exclude alias redirect stubs
     .map((item) => item.url);
   const randomContent = `<script>

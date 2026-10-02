@@ -31,7 +31,7 @@ Press is a bespoke, single-site tool. There are three goals: **(a)** split `buil
 
 Every refactor step must leave `dist/` **byte-identical**. Bug fixes and hardcoding changes that alter output go in separate commits, and each one's diff is reviewed on its own.
 
-`vault/` and `baseline/dist` were migrated to the notes layout on 2026-10-02. Until the real vault is migrated, run `node ../scripts/migrate-notes.mjs --apply` inside `vault/` after every refresh, then regenerate the baseline.
+`vault/` and `baseline/dist` were migrated to the notes layout on 2026-10-02. Until the real vault is migrated, run `node ../scripts/migrate-vault.mjs --apply` inside `vault/` after every refresh, then regenerate the baseline.
 
 Refresh `vault/` with:
 ```sh
@@ -115,8 +115,8 @@ Fixed in the vault on 2026-10-01: the stray `{{lds}}` embed, and the two unhidde
 
 ### Hardcoding candidates
 Joey to confirm each. The evidence comes from the survey above.
-- **Fixed folder roles.** Scan only `topic/`, `notes/`, `category/`, `reading/`, `commentary/`, `partial/` and the root, plus the assets in `image/` and `template/`. This replaces the whole-tree walk and its skip lists.
-- **`hidden` outside `partial/`.** It is still used in `topic/` (34), `notes/` (15) and `reading/` (5), so we need to decide what it means there. (`partial/` is now hardcoded as partials-only; see the next section.)
+- **Fixed folder roles.** Scan only `topic/`, `notes/`, `category/`, `summary/`, `commentary/`, `partial/` and the root, plus the assets in `image/` and `template/`. This replaces the whole-tree walk and its skip lists.
+- **`hidden` outside `partial/`.** It is still used in `topic/` (34), `notes/` (15) and `reading/` (5, to become `summary/`), so we need to decide what it means there. (`partial/` is now hardcoded as partials-only; see the next section.)
 - **Resolve folder-qualified links via a `folder/name` map**, replacing suffix matching. Bare names resolve to `topic/` (or the root) before `notes/`. The root-file tiebreaker and generic ambiguity logic can probably go.
 - **Hardcode the homepage** as `Home page.md`, and drop `permalink` and the home/index logic.
 - **Canonical lowercase frontmatter keys.** This drops `getFrontmatterValue` and fixes the `Title:` bug.
@@ -134,7 +134,24 @@ The HTML comments for missing and circular partials say "partial" too (changed i
 ### Notes pages and namespaces (code done 2026-10-02; vault migration pending)
 Every top-level folder is a namespace, and each can have a `notes/` folder next to its pages (plus a root `notes/` for root pages). `<dir>/notes/X.md` is the notes page for `<dir>/X.md`, at the URL `<page url>/notes`. `aside of`, `asidesMap` and the "Could not find aside of target" warning are gone, and `resolveLink` matches qualified links by exact path and narrows bare names to the source's folder, then `topic/`, then the root. The layout's "Topic" label is the page's folder name ("Article" for root pages). Old `/notes/…` URLs are not redirected, on purpose.
 
-**Before tagging a release that includes this**, run `scripts/migrate-notes.mjs` on the real vault (dry run first, on a copy, never while Obsidian has it open) and commit the result in the content repo together with the tag bump. Against the `vault/` copy it moves 96 notes (92 to `topic/notes/`, 1 to `reading/notes/`, 4 whose page doesn't exist yet to `topic/notes/`; 2 stay in the root `notes/`) and rewrites 6 links. It renames `Epistemolgy` and `Heirs of God (notes)` to match their pages. Verified on a migrated copy: every page outside `notes/` is identical to the baseline after mapping the old note URLs, apart from the nav label (`Category`, `Article`, …), tie order in a few backlinks lists, and the renamed notes. Also still open: the link class `aside` and the `isEmbed` name are unchanged, and the `Topic` nav `li` keeps its `topic` CSS class.
+**Before tagging a release that includes this**, run `scripts/migrate-vault.mjs` on the real vault (dry run first, on a copy, never while Obsidian has it open) and commit the result in the content repo together with the tag bump. Against the `vault/` copy it moves 96 notes (92 to `topic/notes/`, 1 to `reading/notes/`, 4 whose page doesn't exist yet to `topic/notes/`; 2 stay in the root `notes/`) and rewrites 6 links. It renames `Epistemolgy` and `Heirs of God (notes)` to match their pages. Verified on a migrated copy: every page outside `notes/` is identical to the baseline after mapping the old note URLs, apart from the nav label (`Category`, `Article`, …), tie order in a few backlinks lists, and the renamed notes. Also still open: the link class `aside` and the `isEmbed` name are unchanged, and the `Topic` nav `li` keeps its `topic` CSS class.
+
+### Per-namespace alphabetical indexes (code done 2026-10-02; vault flags pending)
+Each namespace (`topic`, `category`, `commentary`, `summary`, and `meta` for the root) has its own list at `/index/alphabetical/{namespace}`, with a menu to the others at the top. `/index/alphabetical` redirects to the Topic list. A namespace with nothing listed doesn't exist: no page, no menu entry. The nav tab says "Topic page", "Meta page" and so on. The random pool is every list except `category`.
+
+**Vault migration still to do (content repo, with the release; `scripts/migrate-vault.mjs` does all of it, including the notes move above):** remove `unlisted` from `About`, `Colophon`, `NTOT`, `OTNT`, `Home page` and the four `commentary/` pages, so they get listed. Keep it on `404` and `Sandbox`. The five `reading/` pages are still `hidden`. Rename the folder to `summary/` (below), then un-hide them as they become real, and the Summaries list appears by itself.
+
+Open: the Scripture index and search include a namespace's pages whenever they're not unlisted. Check that's what you want for `commentary/` and `meta`. Whether `unlisted` should survive at all (it would cover only `404`, `Sandbox` and the auto-unlisted empty categories) is for later.
+
+### Backlog: decouple the random pool from `unlisted` (Joey, 2026-10-02)
+Today the random pool is just the alphabetical lists (minus `category`), so `unlisted` controls it by accident. Joey has ideas for the random feature: the pool should stay controllable, but through its own mechanism, independent of `unlisted`. Not designed yet; ask Joey for the ideas before touching it.
+
+### Backlog: generated pages' nav tab (Joey, 2026-10-02)
+- Generated index pages say "Meta page" in the nav tab. They should say "Index page".
+- Generated pages never have notes pages, so the "Notes" tab shouldn't be shown for them (best: not in the DOM at all). Needs a layout flag or a separate path for generated pages.
+
+### Rename `reading/` to `summary/` (decided 2026-10-02; code done, vault pending)
+`reading/` becomes `summary/` (menu label "Summaries", nav tab "Summary page"). A summary page summarises the main arguments and Scripture citations of a book or article. Its notes page, like a commentary's, holds Joey's own observations and collected material. The code already expects `summary/`, so until the vault folder is renamed those five pages (all `hidden`) aren't in any list. `scripts/migrate-vault.mjs` renames the folder, rewrites `[[reading/…]]` links and renames the `Book notes` / `Article notes` categories to `Book summaries` / `Article summaries`. Those two categories still have no pages; their members are hidden, so the build is silent about it.
 
 ### Template: stays in the vault or moves here?
 `template/` holds the layout, CSS, JS and fonts. Content editors probably shouldn't need to touch it. If it moves to Press, the vault becomes pure content.

@@ -1,12 +1,18 @@
-// One-off migration: global notes/ → per-namespace notes folders.
+// One-off migration for the namespace release. Three steps:
 //
-//   notes/X.md  (aside of: [[topic/Y]])  →  topic/notes/Y.md
+// 1. Global notes/ → per-namespace notes folders:
+//      notes/X.md  (aside of: [[topic/Y]])  →  topic/notes/Y.md
+//    The `aside of` value says which page a note belongs to. The note moves to
+//    <that page's folder>/notes/<that page's name>.md, the `aside of` line is
+//    dropped, and every wikilink to the old note is rewritten to the new path.
+//    Notes it cannot place are left alone and reported.
+// 2. reading/ → summary/ (pages and their notes), with [[reading/…]] links
+//    rewritten.
+// 3. Frontmatter: drop `unlisted: true` from the pages that now get their own
+//    alphabetical lists, and rename the Book notes / Article notes categories
+//    to Book summaries / Article summaries.
 //
 // Run from the vault root. Dry run by default; pass --apply to change files.
-// For each note, the `aside of` value says which page it belongs to. The note
-// moves to <that page's folder>/notes/<that page's name>.md, the `aside of`
-// line is dropped, and every wikilink to the old note is rewritten to the new
-// path. Notes it cannot place are left alone and reported.
 //
 // Never run this on the live iCloud vault while Obsidian is open; do it on a
 // copy first, then build and check the result.
@@ -48,7 +54,10 @@ function findPage(target) {
   return null;
 }
 
-const moves = []; // { from, to, text }
+// reading/ became summary/.
+const renamed = (p) => p.replace(/^reading\//, "summary/");
+
+const noteMoves = []; // { from, to, text }: step 1
 const problems = [];
 
 for (const from of files.filter(isRootNote)) {
@@ -69,7 +78,7 @@ for (const from of files.filter(isRootNote)) {
     continue;
   }
   const dir = dirOf(page ?? target);
-  const to = `${dir ? dir + "/" : ""}notes/${baseOf(page ?? target)}.md`;
+  const to = renamed(`${dir ? dir + "/" : ""}notes/${baseOf(page ?? target)}.md`);
   if (!page) console.log(`note: ${from} has no page yet; placing it for ${target}`);
 
   // Drop the `aside of` line; drop the frontmatter block if nothing is left.
@@ -78,8 +87,14 @@ for (const from of files.filter(isRootNote)) {
   const newText = kept.some((l) => l.trim())
     ? `---\n${kept.join("\n")}\n---\n${body}`
     : body;
-  moves.push({ from, to, text: newText });
+  noteMoves.push({ from, to, text: newText });
 }
+
+// Step 2: everything in reading/ moves to summary/.
+const renames = files
+  .filter((f) => f.startsWith("reading/"))
+  .map((from) => ({ from, to: renamed(from), text: fs.readFileSync(from, "utf8") }));
+const moves = [...noteMoves, ...renames];
 
 // Destination collisions.
 const seen = new Map();
@@ -94,7 +109,7 @@ for (const m of moves) {
 // when no ordinary page has that name, so it can't have meant a page.
 const qualified = new Map();
 const bare = new Map();
-for (const m of moves) {
+for (const m of noteMoves) {
   if (m.to === m.from) continue; // already where it belongs (root pages' notes)
   const old = baseOf(m.from).toLowerCase();
   qualified.set(`notes/${old}`, m.to.slice(0, -3));
@@ -107,6 +122,10 @@ function rewriteLinks(text) {
     /(\[\[)([^\]|#]+?)(\.md)?([|#][^\]]*)?(\]\])/g,
     (match, open, target, _ext, rest = "", close) => {
       const key = target.trim().toLowerCase();
+      if (key.startsWith("reading/")) {
+        rewritten++;
+        return `${open}${target.trim().replace(/^reading\//i, "summary/")}${rest}${close}`;
+      }
       const next = key.includes("/") ? qualified.get(key) : bare.get(key);
       if (!next) return match;
       rewritten++;
@@ -116,18 +135,56 @@ function rewriteLinks(text) {
   );
 }
 
+// Step 3: frontmatter edits. `from` is the file's path before any move.
+const NOW_LISTED = new Set([
+  "About.md",
+  "Colophon.md",
+  "Home page.md",
+  "NTOT.md",
+  "OTNT.md",
+  "commentary/Acts.md",
+  "commentary/Galatians.md",
+  "commentary/Romans.md",
+  "commentary/Titus.md",
+]);
+const CATEGORY_RENAMES = [
+  ["[[Book notes]]", "[[Book summaries]]"],
+  ["[[Article notes]]", "[[Article summaries]]"],
+];
+let edited = 0;
+function editFrontmatter(from, text) {
+  const fm = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (!fm) return text;
+  const eol = fm[0].includes("\r\n") ? "\r\n" : "\n";
+  let lines = fm[1];
+  if (NOW_LISTED.has(from)) {
+    lines = lines
+      .split(/\r?\n/)
+      .filter((l) => !/^unlisted:\s*true\s*$/i.test(l))
+      .join(eol);
+  }
+  for (const [a, b] of CATEGORY_RENAMES) lines = lines.replaceAll(a, b);
+  if (lines === fm[1]) return text;
+  edited++;
+  const body = text.slice(fm[0].length);
+  return lines.trim() ? `---${eol}${lines}${eol}---${eol}${body}` : body;
+}
+
 const movedFrom = new Set(moves.map((m) => m.from));
 const outputs = []; // { path, text }
 for (const f of files) {
   if (f.startsWith("partial/") || movedFrom.has(f)) continue;
   const text = fs.readFileSync(f, "utf8");
-  const next = rewriteLinks(text);
+  const next = rewriteLinks(editFrontmatter(f, text));
   if (next !== text) outputs.push({ path: f, text: next });
 }
-for (const m of moves) m.text = rewriteLinks(m.text);
+for (const m of moves) m.text = rewriteLinks(editFrontmatter(m.from, m.text));
 
 for (const m of moves) console.log(`${m.to === m.from ? "stay" : apply ? "move" : "would move"}: ${m.from} → ${m.to}`);
-console.log(`\n${moves.length} note(s) to move, ${rewritten} link(s) rewritten in ${outputs.length} other file(s).`);
+console.log(
+  `\n${noteMoves.length} note(s) to move, ${renames.length} file(s) renamed reading/ → summary/, ` +
+    `${edited} frontmatter edit(s), ${rewritten} link(s) rewritten in ${outputs.length} other file(s).`,
+);
 for (const p of problems) console.log(`PROBLEM: ${p}`);
 
 if (!apply) {
@@ -143,4 +200,11 @@ for (const m of moves) {
   fs.mkdirSync(dirOf(m.to), { recursive: true });
   fs.writeFileSync(m.to, m.text);
   if (m.to !== m.from) fs.unlinkSync(m.from);
+}
+// Remove folders that the moves emptied (children first).
+for (const d of new Set(renames.map((m) => dirOf(m.from)))) {
+  for (let dir = d; dir; dir = dirOf(dir)) {
+    if (fs.readdirSync(dir).length) break;
+    fs.rmdirSync(dir);
+  }
 }
