@@ -29,7 +29,7 @@ node ../scripts/compare-dist.mjs ../baseline/dist dist      # must say IDENTICAL
 ```
 
 - All paths in `build.js` are relative to the cwd. From the repo root, the build would publish this repo's own Markdown.
-- The build doesn't clean `dist/`, so always `rm -rf dist` first.
+- Output goes to `./dist`, or to `$PRESS_OUT` when set (an absolute or cwd-relative path). The build doesn't clean it, so always `rm -rf` it first.
 - `baseline/dist` (gitignored) is the reference output of the original `build.js` for the current `vault/` copy. Regenerate it whenever `vault/` is refreshed, or whenever an output change is accepted on purpose.
 - The layout uses `Date.now()` cache-busters, so raw `diff -r` always differs. `compare-dist.mjs` normalises them.
 - For edge cases the vault lacks, use a scratch vault in the scratchpad.

@@ -1317,7 +1317,11 @@ const md = markdownIt({
   .use(markdownItAttrs);
 
 // The vault (content) is the working directory; the template ships with Press.
-const OUTPUT_DIR = "dist";
+// Output goes to ./dist unless PRESS_OUT names another directory (local use
+// only, e.g. to keep build output out of the iCloud-synced vault; CI sets nothing).
+const OUTPUT_DIR = process.env.PRESS_OUT
+  ? path.resolve(process.env.PRESS_OUT)
+  : "dist";
 const TEMPLATE_DIR = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "template",
@@ -1327,6 +1331,7 @@ const SKIP_FILES = new Set(["replit.md"]);
 const MD_SKIP_DIRS = new Set([
   "node_modules",
   "dist",
+  path.basename(OUTPUT_DIR),
   ".git",
   ".github",
   ".local",
@@ -1335,6 +1340,7 @@ const MD_SKIP_DIRS = new Set([
 const ASSET_SKIP_DIRS = new Set([
   "node_modules",
   "dist",
+  path.basename(OUTPUT_DIR),
   ".git",
   ".github",
   ".local",
@@ -1705,7 +1711,7 @@ async function build() {
     }
   }
   if (assetFiles.length > 0) {
-    console.log(`Copied ${assetFiles.length} asset(s) to dist/asset/`);
+    console.log(`Copied ${assetFiles.length} asset(s) to ${path.join(OUTPUT_DIR, "asset")}/`);
   }
 
   const mdFiles = await findMarkdownFiles(".");

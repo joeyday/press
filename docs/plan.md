@@ -18,6 +18,8 @@ The content repo is `joeyday/totascriptura.org`. Both repos are public, so no CI
 - Have `deploy.yml` run `npm ci && npm run build`, and bump Node 20 to 22, since 20 is end-of-life.
 - To bump Press later, change the tag and regenerate the lockfile (see `CLAUDE.md` → Releasing).
 
+**Added after v0.1.0:** the `PRESS_OUT` environment variable (output directory; default `dist`). Not yet released or tagged, and CI doesn't need it. Planned next: `press serve` / `npm link` for local preview, and possibly an incremental rebuild, because Joey now expects to run builds locally.
+
 ## 1. Short-term goals (set 2026-10-01)
 
 Press is a bespoke, single-site tool. There are three goals: **(a)** split `build.js` into modules, **(b)** make the build much faster (aim for about half the current time), and **(c)** hardcode folder roles and other decisions that are currently generic.

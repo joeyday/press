@@ -16,7 +16,7 @@ The content repo installs Press as a git dependency and runs its `press` command
 
 During Press development, run `cd vault && node ../build.js` (see `CLAUDE.md`).
 
-The vault scan, `abbreviations.json`, `alt-text.json` and the output directory `dist/` are resolved from the **working directory**. The template is resolved from Press's own directory.
+The vault scan, `abbreviations.json`, `alt-text.json` are resolved from the **working directory**. Output goes to `./dist`, or to the directory named by the `PRESS_OUT` environment variable if set. CI sets nothing; locally it keeps build output out of the iCloud-synced vault (for example `export PRESS_OUT="$HOME/Projects/press/out"` in `~/.zshrc`). The template is resolved from Press's own directory.
 
 `dist/` is **not** cleaned before a build. Delete it yourself for a clean build. (See `docs/plan.md`.)
 
