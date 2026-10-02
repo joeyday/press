@@ -54,7 +54,7 @@ To release:
 
 1. Copies assets flat to `dist/asset/`.
 2. Parses every `.md` file into `filesToProcess`, and builds `fileMap` and `titleMap`. Files in `partial/` go to a separate `partials` map instead and are never pages.
-3. Derives the relationship maps: aliases, featured, `featured with`, asides, category members, all pages.
+3. Derives the relationship maps: aliases, featured, `featured with`, notes pages, category members, all pages.
 4. Runs a backlinks pre-pass.
 5. Renders each page: partials → wikilinks → EJS → `%%` strip → `~small~` → markdown-it → layout → `classifyLinks`.
 6. Writes the generated pages: alias redirects, backlinks pages, the four indexes, search and random.
@@ -63,7 +63,7 @@ To release:
 Every post-pass uses the same hand-rolled tag-splitter-plus-skip-stack pattern (`TAG_RE`). None of them skip `<head>` or `<title>`.
 
 Key helpers:
-- `resolveLink`: path-qualified matching, a root-file tiebreaker, and `excludeUrl`.
+- `resolveLink`: exact path matching for qualified links; bare names narrow to the source's folder, then `topic/`, then the root. A `notes/` folder next to a page is its notes page (`/…/foo/notes`).
 - `expandPartials`: recursive, with positional arguments. Looks up `partial/` basenames only.
 - `getFrontmatterValue`: case-insensitive key lookup.
 - `sortableTitle`: ignores leading articles when sorting.

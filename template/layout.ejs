@@ -92,18 +92,18 @@
     <h2 id="page-actions" class="visually-hidden">Page actions</h2>
     <nav class="page-actions" aria-labelledby="page-actions">
         <ul>
-            <% if (!isAside) { %>
-            <li class="topic selected">Topic</li>
-            <% } else if (asideOf) { %>
-            <li class="topic"><a href="<%= asideOf.url %>">Topic</a></li>
+            <% if (!isNote) { %>
+            <li class="topic selected"><%= nsLabel %></li>
+            <% } else if (notePage) { %>
+            <li class="topic"><a href="<%= notePage.url %>"><%= nsLabel %></a></li>
             <% } else { %>
-            <li class="topic muted">Topic</li>
+            <li class="topic muted"><%= nsLabel %></li>
             <% } %>
 
-            <% if (isAside) { %>
+            <% if (isNote) { %>
             <li class="notes selected">Notes</li>
-            <% } else if (asides.length) { %>
-            <li class="notes"><a href="<%= asides[0].url %>">Notes</a></li>
+            <% } else if (noteUrl) { %>
+            <li class="notes"><a href="<%= noteUrl %>">Notes</a></li>
             <% } else { %>
             <li class="notes muted">Notes</li>
             <% } %>

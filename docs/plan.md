@@ -31,6 +31,8 @@ Press is a bespoke, single-site tool. There are three goals: **(a)** split `buil
 
 Every refactor step must leave `dist/` **byte-identical**. Bug fixes and hardcoding changes that alter output go in separate commits, and each one's diff is reviewed on its own.
 
+`vault/` and `baseline/dist` were migrated to the notes layout on 2026-10-02. Until the real vault is migrated, run `node ../scripts/migrate-notes.mjs --apply` inside `vault/` after every refresh, then regenerate the baseline.
+
 Refresh `vault/` with:
 ```sh
 rsync -a --delete --exclude='.git/' --exclude='.obsidian/' --exclude='.trash/' --exclude='.github/' \
@@ -114,12 +116,6 @@ Fixed in the vault on 2026-10-01: the stray `{{lds}}` embed, and the two unhidde
 ### Hardcoding candidates
 Joey to confirm each. The evidence comes from the survey above.
 - **Fixed folder roles.** Scan only `topic/`, `notes/`, `category/`, `reading/`, `commentary/`, `partial/` and the root, plus the assets in `image/` and `template/`. This replaces the whole-tree walk and its skip lists.
-- **`notes/X` is the aside of the page named `X`.** This already holds for 91 of 96 notes. The exceptions:
-  - three point at root or `reading/` pages
-  - `Epistemolgy` (a typo) and `Heirs of God (notes)` have mismatched names
-  - `Doubt`'s target is missing
-
-  This would retire `aside of`.
 - **`hidden` outside `partial/`.** It is still used in `topic/` (34), `notes/` (15) and `reading/` (5), so we need to decide what it means there. (`partial/` is now hardcoded as partials-only; see the next section.)
 - **Resolve folder-qualified links via a `folder/name` map**, replacing suffix matching. Bare names resolve to `topic/` (or the root) before `notes/`. The root-file tiebreaker and generic ambiguity logic can probably go.
 - **Hardcode the homepage** as `Home page.md`, and drop `permalink` and the home/index logic.
@@ -134,6 +130,11 @@ Joey to confirm each. The evidence comes from the survey above.
 The feature is called **partials** everywhere in the code (`expandPartials`, `splitPartialArgs`, the `partials` map). Only `partial/` is consulted, by basename; everything in it is a partial and never a page, and its frontmatter is ignored, so the vault can drop it gradually. Verified byte-identical against the baseline.
 
 The HTML comments for missing and circular partials say "partial" too (changed in a separate commit after the refactor tied out). `![[image]]` is Obsidian's image embed, a different feature, and keeps its name. The vault still has seven `{{[[violation-goals]]}}`/`{{[[draft]]}}` references to partials that don't exist; they sit in hidden pages, so they are silent.
+
+### Notes pages and namespaces (code done 2026-10-02; vault migration pending)
+Every top-level folder is a namespace, and each can have a `notes/` folder next to its pages (plus a root `notes/` for root pages). `<dir>/notes/X.md` is the notes page for `<dir>/X.md`, at the URL `<page url>/notes`. `aside of`, `asidesMap` and the "Could not find aside of target" warning are gone, and `resolveLink` matches qualified links by exact path and narrows bare names to the source's folder, then `topic/`, then the root. The layout's "Topic" label is the page's folder name ("Article" for root pages). Old `/notes/…` URLs are not redirected, on purpose.
+
+**Before tagging a release that includes this**, run `scripts/migrate-notes.mjs` on the real vault (dry run first, on a copy, never while Obsidian has it open) and commit the result in the content repo together with the tag bump. Against the `vault/` copy it moves 96 notes (92 to `topic/notes/`, 1 to `reading/notes/`, 4 whose page doesn't exist yet to `topic/notes/`; 2 stay in the root `notes/`) and rewrites 6 links. It renames `Epistemolgy` and `Heirs of God (notes)` to match their pages. Verified on a migrated copy: every page outside `notes/` is identical to the baseline after mapping the old note URLs, apart from the nav label (`Category`, `Article`, …), tie order in a few backlinks lists, and the renamed notes. Also still open: the link class `aside` and the `isEmbed` name are unchanged, and the `Topic` nav `li` keeps its `topic` CSS class.
 
 ### Template: stays in the vault or moves here?
 `template/` holds the layout, CSS, JS and fonts. Content editors probably shouldn't need to touch it. If it moves to Press, the vault becomes pure content.

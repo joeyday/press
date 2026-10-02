@@ -1476,61 +1476,62 @@ function resolveFileMapKey(target, fileMap) {
   return raw;
 }
 
+// "topic/Foo" → "topic/foo": the key for exact (path-qualified) link lookups.
+function pathKey(relDir, baseName) {
+  return (relDir ? `${relDir}/${baseName}` : baseName).toLowerCase().trim();
+}
+
+// notes/ at the root, or <dir>/notes/, holds the notes pages for the pages in
+// the parent directory. Returns that parent directory ("" for the root), or
+// null when relDir is not a notes directory.
+function notesParentDir(relDir) {
+  if (relDir === "notes") return "";
+  if (relDir.endsWith("/notes")) return relDir.slice(0, -"/notes".length);
+  return null;
+}
+
 /**
  * Resolve a wikilink target to a single URL.
  * Returns:
- *   { url: string }        — exactly one match found
- *   { ambiguous: true }    — two or more matches (bare name collision)
- *   { notFound: true }     — no match at all
+ *   { url: string }                  — one match
+ *   { url: string, shadowed: true }  — a bare name matched several pages and
+ *                                      a tiebreak picked one (callers warn)
+ *   { ambiguous: true }              — a bare name matched several pages and no
+ *                                      tiebreak applies
+ *   { notFound: true }               — no match at all
  *
- * If target contains "/" it is treated as path-qualified (e.g. "topic/Trinity")
- * and resolved by matching folder prefix + bare name against filesToProcess.
+ * A target containing "/" is path-qualified from the vault root
+ * ("topic/Trinity", "topic/notes/Trinity") and matches exactly.
  *
- * excludeUrl — optional URL to remove from candidates before resolution.
- * Used when resolving "aside of" so a page is never considered an aside of itself.
- *
- * Root-file tiebreaker: when multiple candidates remain after self-exclusion,
- * if exactly one lives at the filesystem root (relDir === ""), it wins — because
- * a bare [[Name]] link is the only way to reference a root-level file and is
- * therefore as unambiguous as it can be.
+ * A bare name is looked up in fileMap (basenames, aliases, permalinks). Notes
+ * pages only count when no ordinary page has the name. Remaining candidates
+ * are narrowed to the one in the source's own folder (fromDir), then in
+ * topic/, then at the root.
  */
-function resolveLink(target, fileMap, filesToProcess, excludeUrl = null) {
+function resolveLink(target, fileMap, index, fromDir = "") {
   const trimmed = target.trim();
 
   if (trimmed.includes("/")) {
-    const lowerTarget = trimmed.toLowerCase();
-    const parts = lowerTarget.split("/");
-    const bareName = parts[parts.length - 1];
-    const folderPrefix = parts.slice(0, -1).join("/");
-    const matches = filesToProcess.filter((fi) => {
-      const fiBareName = path.basename(fi.fileName, ".md").toLowerCase().trim();
-      const fiDir = fi.relDir.toLowerCase();
-      return (
-        fiBareName === bareName &&
-        (fiDir === folderPrefix || fiDir.endsWith("/" + folderPrefix))
-      );
-    });
-    if (matches.length === 1) return { url: matches[0].finalUrlPath };
-    if (matches.length > 1) return { ambiguous: true };
-    return { notFound: true };
+    const fi = index.byPath[trimmed.toLowerCase().replace(/^\/+/, "")];
+    return fi ? { url: fi.finalUrlPath } : { notFound: true };
   }
 
   const key = resolveFileMapKey(trimmed, fileMap);
-  let urls = fileMap[key];
+  const urls = fileMap[key];
   if (!urls || urls.length === 0) return { notFound: true };
-
-  if (excludeUrl) urls = urls.filter((u) => u !== excludeUrl);
-  if (urls.length === 0) return { notFound: true };
   if (urls.length === 1) return { url: urls[0] };
 
-  // Root-file tiebreaker: prefer the single candidate that lives at the
-  // filesystem root (relDir === ""), since a bare link is the only way to
-  // reference it and is therefore unambiguous by definition.
-  const rootCandidates = urls.filter((url) =>
-    filesToProcess.some((fi) => fi.finalUrlPath === url && fi.relDir === ""),
-  );
-  if (rootCandidates.length === 1) return { url: rootCandidates[0] };
+  const found = urls.map((url) => index.byUrl[url]);
+  const pages = found.filter((fi) => !fi.isNote);
+  const pool = pages.length > 0 ? pages : found;
+  if (pool.length === 1) return { url: pool[0].finalUrlPath };
 
+  for (const dir of [fromDir, "topic", ""]) {
+    const matches = pool.filter((fi) => fi.nsDir === dir);
+    if (matches.length === 1) {
+      return { url: matches[0].finalUrlPath, shadowed: true };
+    }
+  }
   return { ambiguous: true };
 }
 
@@ -1642,6 +1643,8 @@ async function build() {
   const titleMap = {};
   const partials = {}; // basename (lowercase) → body, from partial/
   const filesToProcess = [];
+  // Exact lookups for link resolution: lowercase "dir/basename" and URL → file.
+  const index = { byPath: {}, byUrl: {} };
 
   const imageMap = {};
   const assetFiles = [
@@ -1674,6 +1677,7 @@ async function build() {
 
   const mdFiles = await findMarkdownFiles(".");
 
+  const sources = [];
   for (const { filePath, relDir, fileName } of mdFiles) {
     const content = await fs.readFile(filePath, "utf-8");
     let parsed;
@@ -1693,6 +1697,16 @@ async function build() {
       partials[baseName.toLowerCase().trim()] = parsed.content;
       continue;
     }
+
+    sources.push({ filePath, relDir, fileName, baseName, parsed });
+  }
+
+  // Pages get their URL from the permalink. A notes page lives one segment
+  // below its page (/topic/foo → /topic/foo/notes), so pages go first.
+  const pageUrls = {}; // pathKey → URL
+  for (const src of sources) {
+    if (notesParentDir(src.relDir) !== null) continue;
+    const { relDir, baseName, parsed } = src;
 
     let permalink = getFrontmatterValue(parsed.data, "permalink");
     if (typeof permalink === "string") {
@@ -1716,13 +1730,35 @@ async function build() {
       }
     }
 
+    src.permalink = permalink;
+    src.finalUrlPath = finalUrlPath;
+    pageUrls[pathKey(relDir, baseName)] = finalUrlPath;
+  }
+  for (const src of sources) {
+    const parentDir = notesParentDir(src.relDir);
+    if (parentDir === null) continue;
+
+    // Notes with no page of their own still get the URL the page would have.
+    const slug = slugify(src.baseName, { lower: true, strict: true });
+    const pageUrl =
+      pageUrls[pathKey(parentDir, src.baseName)] ??
+      (parentDir === "" ? `/${slug}` : `/${parentDir}/${slug}`);
+
+    src.permalink = slug;
+    src.finalUrlPath = `${pageUrl === "/" ? "" : pageUrl}/notes`;
+  }
+
+  for (const src of sources) {
+    const { filePath, relDir, fileName, baseName, parsed, permalink, finalUrlPath } =
+      src;
+    const parentDir = notesParentDir(relDir);
+
     const key = baseName.toLowerCase().trim();
     if (!fileMap[key]) fileMap[key] = [];
     fileMap[key].push(finalUrlPath);
 
-    // Also index by permalink slug so wikilinks / aside-of can use the
-    // permalink as the target (e.g. [[home]] finding "Home page.md" whose
-    // permalink is "home").
+    // Also index by permalink slug so wikilinks can use the permalink as the
+    // target (e.g. [[home]] finding "Home page.md" whose permalink is "home").
     const permKey = permalink.toLowerCase().trim();
     if (permKey && permKey !== key) {
       if (!fileMap[permKey]) fileMap[permKey] = [];
@@ -1741,7 +1777,6 @@ async function build() {
     const hidden = !!getFrontmatterValue(parsed.data, "hidden");
     const rawAliases = getFrontmatterValue(parsed.data, "aliases");
     const aliases = parseCategoriesList(rawAliases);
-    const asideOf = getFrontmatterValue(parsed.data, "aside of");
     const rawCategories = getFrontmatterValue(parsed.data, "categories");
     const categories = parseCategoriesList(rawCategories);
     const featured = !!getFrontmatterValue(parsed.data, "featured");
@@ -1752,8 +1787,11 @@ async function build() {
     const draft = !!getFrontmatterValue(parsed.data, "draft");
     const unlisted = !!getFrontmatterValue(parsed.data, "unlisted");
 
-    filesToProcess.push({
+    const fileInfo = {
       relDir,
+      isNote: parentDir !== null,
+      // The folder a page "belongs to": its own, or its notes folder's parent.
+      nsDir: parentDir ?? relDir,
       fileName,
       filePath,
       baseName,
@@ -1763,13 +1801,15 @@ async function build() {
       title,
       hidden,
       aliases,
-      asideOf: asideOf ? stripBrackets(String(asideOf)) : null,
       categories,
       featured,
       featuredWith,
       draft,
       unlisted,
-    });
+    };
+    filesToProcess.push(fileInfo);
+    index.byPath[pathKey(relDir, baseName)] = fileInfo;
+    index.byUrl[finalUrlPath] = fileInfo;
   }
 
   const aliasRedirects = [];
@@ -1835,7 +1875,8 @@ async function build() {
     const resolved = resolveLink(
       fileInfo.featuredWith,
       fileMap,
-      filesToProcess,
+      index,
+      fileInfo.nsDir,
     );
     if (!resolved.url) continue;
     const targetUrl = resolved.url;
@@ -1846,31 +1887,18 @@ async function build() {
     });
   }
 
-  // asidesMap: keyed by the URL of the primary page an aside belongs to.
-  const asidesMap = {};
+  // notesByPage: page URL → URL of its notes page, and the reverse. A notes
+  // page is <dir>/notes/X.md for the page <dir>/X.md; either may exist alone.
+  const notesByPage = {};
+  const pageByNotes = {};
   for (const fileInfo of filesToProcess) {
-    if (fileInfo.hidden) continue;
-    if (!fileInfo.asideOf) continue;
-    const resolved = resolveLink(fileInfo.asideOf, fileMap, filesToProcess, fileInfo.finalUrlPath);
-    if (!resolved.url) {
-      if (resolved.ambiguous) {
-        console.warn(
-          `Warning: Ambiguous "aside of" target — "${fileInfo.asideOf}" in "${fileInfo.filePath}"`,
-        );
-      } else {
-        console.warn(
-          `Warning: Could not find "aside of" target — "${fileInfo.asideOf}" in "${fileInfo.filePath}"`,
-        );
-      }
-      continue;
+    if (!fileInfo.isNote) continue;
+    const page = index.byPath[pathKey(fileInfo.nsDir, fileInfo.baseName)];
+    if (!page || page.isNote) continue;
+    if (!fileInfo.hidden) notesByPage[page.finalUrlPath] = fileInfo.finalUrlPath;
+    if (!page.hidden) {
+      pageByNotes[fileInfo.finalUrlPath] = { url: page.finalUrlPath };
     }
-    if (!asidesMap[resolved.url]) {
-      asidesMap[resolved.url] = [];
-    }
-    asidesMap[resolved.url].push({
-      title: fileInfo.title,
-      url: fileInfo.finalUrlPath,
-    });
   }
 
   // membersMap: keyed by the URL of the category page a file belongs to.
@@ -1879,7 +1907,7 @@ async function build() {
     if (fileInfo.hidden) continue;
     if (fileInfo.unlisted) continue;
     for (const catName of fileInfo.categories) {
-      const resolved = resolveLink(catName, fileMap, filesToProcess);
+      const resolved = resolveLink(catName, fileMap, index, "category");
       if (!resolved.url) {
         if (resolved.ambiguous) {
           console.warn(
@@ -1912,10 +1940,7 @@ async function build() {
   }
 
   // Build a URL→fileInfo lookup for fast reverse lookups.
-  const urlToFileInfo = {};
-  for (const fi of filesToProcess) {
-    urlToFileInfo[fi.finalUrlPath] = fi;
-  }
+  const urlToFileInfo = index.byUrl;
 
   const hiddenUrls = new Set(
     filesToProcess.filter((f) => f.hidden).map((f) => f.finalUrlPath),
@@ -1945,12 +1970,9 @@ async function build() {
   const featuredUrls = new Set(featuredPages.map((p) => p.url));
   // membersMap is now URL-keyed, so its keys are already the category page URLs.
   const categoryUrls = new Set(Object.keys(membersMap));
-  const asideUrls = new Set();
-  for (const fileInfo of filesToProcess) {
-    if (fileInfo.asideOf) {
-      asideUrls.add(fileInfo.finalUrlPath);
-    }
-  }
+  const asideUrls = new Set(
+    filesToProcess.filter((f) => f.isNote).map((f) => f.finalUrlPath),
+  );
 
   function classifyLinks(html) {
     return html.replace(
@@ -1995,9 +2017,10 @@ async function build() {
         frontmatter: fm,
         bodyClasses,
         content,
-        asideOf: locals.asideOf || null,
-        isAside: locals.isAside || false,
-        asides: locals.asides || [],
+        nsLabel: locals.nsLabel || "Article",
+        isNote: locals.isNote || false,
+        notePage: locals.notePage || null,
+        noteUrl: locals.noteUrl || null,
         categories: locals.categories || [],
         subcategories: locals.subcategories || [],
         pages: locals.pages || [],
@@ -2011,7 +2034,7 @@ async function build() {
 
   const allPages = [];
   for (const fileInfo of filesToProcess) {
-    if (fileInfo.asideOf) continue;
+    if (fileInfo.isNote) continue;
     if (fileInfo.hidden) continue;
     if (fileInfo.unlisted) continue;
     if (membersMap[fileInfo.finalUrlPath]) continue;
@@ -2062,7 +2085,7 @@ async function build() {
       if (searchTarget.toLowerCase().endsWith(".md")) {
         searchTarget = searchTarget.slice(0, -3);
       }
-      const resolved = resolveLink(searchTarget, fileMap, filesToProcess);
+      const resolved = resolveLink(searchTarget, fileMap, index, fileInfo.nsDir);
       if (resolved.url) {
         if (!backlinksMap[resolved.url]) backlinksMap[resolved.url] = [];
         // Avoid duplicates (same source linking to same target multiple times)
@@ -2136,7 +2159,12 @@ async function build() {
           searchTarget = searchTarget.substring(0, searchTarget.length - 3);
         }
 
-        const resolved = resolveLink(searchTarget, fileMap, filesToProcess);
+        const resolved = resolveLink(searchTarget, fileMap, index, fileInfo.nsDir);
+        if (resolved.shadowed) {
+          console.warn(
+            `Warning: Bare wikilink "${searchTarget}" in "${fileInfo.filePath}" matches several pages — using ${resolved.url}; qualify it`,
+          );
+        }
         if (resolved.url) {
           return `[${text}](${resolved.url})`;
         }
@@ -2173,22 +2201,8 @@ async function build() {
     markdownContent = protectFencedAttrs(markdownContent);
     const htmlContent = md.render(markdownContent);
 
-    let asideOfResolved = null;
-    if (fileInfo.asideOf) {
-      const resolved = resolveLink(fileInfo.asideOf, fileMap, filesToProcess, fileInfo.finalUrlPath);
-      if (resolved.url) {
-        const targetFi = urlToFileInfo[resolved.url];
-        asideOfResolved = {
-          title: targetFi ? targetFi.title : resolved.url,
-          url: resolved.url,
-        };
-      }
-    }
-
-    const asides = asidesMap[fileInfo.finalUrlPath] || [];
-
     const resolvedCategories = fileInfo.categories.map((catName) => {
-      const resolved = resolveLink(catName, fileMap, filesToProcess);
+      const resolved = resolveLink(catName, fileMap, index, "category");
       if (resolved.url) {
         const targetFi = urlToFileInfo[resolved.url];
         return {
@@ -2222,9 +2236,13 @@ async function build() {
     const finalHtml = renderLayout(htmlContent, {
       url: fileInfo.finalUrlPath,
       frontmatter: fileInfo.parsed.data,
-      asideOf: asideOfResolved,
-      isAside: !!fileInfo.asideOf,
-      asides,
+      // The page's folder names its namespace: "topic" → "Topic". Root pages: "Article".
+      nsLabel: fileInfo.nsDir
+        ? fileInfo.nsDir[0].toUpperCase() + fileInfo.nsDir.slice(1)
+        : "Article",
+      isNote: fileInfo.isNote,
+      notePage: pageByNotes[fileInfo.finalUrlPath] || null,
+      noteUrl: notesByPage[fileInfo.finalUrlPath] || null,
       categories: resolvedCategories,
       subcategories,
       pages,

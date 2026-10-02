@@ -43,6 +43,7 @@ The rest come from the vault:
 
 - **Slug**: the `permalink` frontmatter value (leading `/` stripped, otherwise used **verbatim**, not slugified), or else `slugify(filename, {lower, strict})`.
 - **URL**: `/{relDir}/{slug}`. Folder names are used verbatim, keeping their case and spaces.
+- **Notes pages**: a file in `notes/` (root) or `<folder>/notes/` is the notes page for the page of the same name in the parent folder. Its URL is the page's URL plus `/notes`: `topic/notes/Foo.md` is `/topic/foo/notes`, and the home page's notes are `/notes`. A `permalink` on a notes page is ignored. A notes page needs no page: with none, it still builds, at the URL the page would have, and its "Topic" link is greyed out. It is left out of the alphabetical index, the random pool and the Scripture index. Hide it with `hidden: true` like any page. So `/topic/foo` and `/topic/foo/notes` are reached from each other by adding or removing `/notes`.
 - **Homepage**: a *root-level* file whose slug is `home` or `index` becomes `/`. In practice that means a file named `home.md`/`index.md` or `permalink: home`/`index`. (`permalink: ""` or `/` does **not** make a homepage: an empty permalink falls back to the slugified filename.)
 - **404**: the URL `/404` is written to `dist/404.html` instead of `dist/404/index.html`.
 - Each page is written to `dist/{url}/index.html`. An empty `dist/.nojekyll` is always written.
@@ -55,12 +56,11 @@ Keys are matched case-insensitively for every property below. The template, howe
 |---|---|
 | `title` | Display title. Defaults to the filename without `.md`. |
 | `permalink` | URL slug (see above). |
-| `hidden` | No page is generated. Hidden pages are left out of every index, search, the random pool, backlinks, asides and categories, and links to them get the `broken` class. *Their `aliases` still produce redirect stubs.* |
-| `unlisted` | The page is built and links to it count as valid. It is left out of all index pages (including the Scripture index), search, the random pool, featured/featured-with, and category membership. It still takes part in asides and backlinks. |
+| `hidden` | No page is generated. Hidden pages are left out of every index, search, the random pool, backlinks, notes links and categories, and links to them get the `broken` class. *Their `aliases` still produce redirect stubs.* |
+| `unlisted` | The page is built and links to it count as valid. It is left out of all index pages (including the Scripture index), search, the random pool, featured/featured-with, and category membership. It still takes part in notes links and backlinks. |
 | `draft` | Listed on `/index/drafts`. Links to it get the `draft` class. |
 | `featured` | Listed on `/index/featured`. Gets a star on `/index/alphabetical`. Links to it get the `featured` class. |
 | `featured with` | Value is a page name or `[[wikilink]]`. Shown as "(and …)" after the target on `/index/featured`. Gets a star on the alphabetical index. |
-| `aside of` | Value is a page name or `[[wikilink]]`. The page becomes an aside of the target. The page itself is excluded when resolving the target. Asides are left out of the alphabetical index, the random pool and the Scripture index. |
 | `categories` | A string or list of page names/`[[wikilinks]]`. Each target becomes a category page. |
 | `aliases` | A string or list. Each alias writes a meta-refresh redirect at `/{relDir}/{slugify(alias)}`, is listed on the alphabetical index as "Alias (see Title)", and works as a wikilink target. |
 
@@ -68,11 +68,13 @@ For all page-name values, `[[Page|Display]]` is reduced to `Page`.
 
 ## Link resolution
 
-`resolveLink` is used for wikilinks, `aside of`, `categories` and `featured with`:
+`resolveLink` is used for wikilinks, `categories` and `featured with`:
 
-1. If the target contains `/`, it is treated as **path-qualified**. It matches files whose basename equals the last segment and whose folder equals, or ends with, the prefix.
+1. If the target contains `/`, it is **path-qualified** and matches the file at exactly that path from the vault root, case-insensitively: `topic/Trinity`, `topic/notes/Trinity`. There is no suffix matching.
 2. Otherwise the target is looked up in `fileMap`, which is keyed by the lowercased basename, the permalink, the alias name and the alias slug. A key also matches when its hyphens are read as spaces (`[[foo bar]]` finds the key `foo-bar`).
-3. When several candidates match and **exactly one is at the vault root**, that one wins. Otherwise the result is ambiguous: a warning is logged and the link is rendered as a `broken` span.
+3. When several candidates match, notes pages are dropped unless nothing else matches. Then the candidate in the source page's own folder wins (a notes page counts as in its page's folder), then the one in `topic/`, then the one at the vault root. When a tiebreak decides, a warning asks you to qualify the link. If none applies, the result is ambiguous: a warning is logged and the link is rendered as a `broken` span.
+
+`categories` values are resolved as if written from `category/`.
 
 ## Per-page pipeline
 
@@ -99,11 +101,12 @@ Steps 1–6 are plain regex passes over the raw Markdown. They also apply inside
 
 ### Layout template variables
 
-`frontmatter`, `bodyClasses`, `content`, `asideOf`, `isAside`, `asides`, `categories`, `subcategories`, `pages`, `featured`, `featuredWith`, `backlinkUrl` and `backlinkCount`.
+`frontmatter`, `bodyClasses`, `content`, `nsLabel`, `isNote`, `notePage`, `noteUrl`, `categories`, `subcategories`, `pages`, `featured`, `featuredWith`, `backlinkUrl` and `backlinkCount`.
 
 - `bodyClasses`: the URL's path segments, or `["home"]` for `/`.
-- `asideOf`: `{title,url}` or null.
-- `asides`, `categories`, `subcategories`, `pages`: arrays of `{title,url}`. `subcategories` holds members that have members of their own, and `pages` holds the rest.
+- `nsLabel`: the page's folder name, capitalised (`Topic`, `Commentary`), or `Article` for root pages. A notes page uses its page's folder.
+- `isNote`: true for a notes page. `notePage` is `{url}` of its page (null when the page doesn't exist or is hidden). `noteUrl` is a page's notes URL, or null.
+- `categories`, `subcategories`, `pages`: arrays of `{title,url}`. `subcategories` holds members that have members of their own, and `pages` holds the rest.
 - `featured`: true only for `featured: true`.
 - `featuredWith`: the raw page-name string, or null.
 - `backlinkUrl`: null on generated pages (indexes, search, random, backlinks pages).
@@ -113,7 +116,7 @@ Steps 1–6 are plain regex passes over the raw Markdown. They also apply inside
 - **Backlinks**: `/{url}/backlinks` (or `/backlinks` for `/`) for every non-hidden page. Sources are all non-hidden pages whose wikilinks resolve to the page. This is counted on partial-expanded Markdown, *before* comment stripping or EJS. It counts self-links and links inside `%%comments%%`.
 - **Alias redirects**: written after the pages, with no collision check.
 - **Indexes**:
-  - `/index/alphabetical`: pages that are not hidden, unlisted, asides or category pages with members, plus their aliases.
+  - `/index/alphabetical`: pages that are not hidden, unlisted, notes pages or category pages with members, plus their aliases.
   - `/index/categorical`: a flat list of top-level category pages only. Those are category pages that are not themselves in a category.
   - `/index/featured`
   - `/index/drafts`
