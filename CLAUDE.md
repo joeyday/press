@@ -47,7 +47,7 @@ To release:
 3. In the content repo, update the tag in `package.json` and run `npm update tsgen --package-lock-only` (never a full `npm install` inside the iCloud vault). Plain `npm install --package-lock-only` does **not** re-resolve a git dependency whose lock entry already exists, so CI would keep building with the old tsgen. Then run `npm audit fix --package-lock-only` there too: the content repo's lockfile pins tsgen's nested dependencies (tsgen's own lockfile is ignored when it is installed as a dependency), so patched versions only arrive when the content repo's lockfile is refreshed. Check that `package-lock.json`'s `node_modules/tsgen` entry shows the new `version` and the new tag's commit (`git rev-parse --short vX.Y.Z`) before committing. Content migrations and the tag bump go in one commit, since the push is what deploys.
 4. Commit and push. Only do this with Joey's go-ahead, since it deploys the live site.
 
-`template/` (layout, CSS, JS, fonts) belongs to tsgen. It is resolved from `build.js`'s own directory, and its assets are copied alongside the vault's.
+`template/` (layout, CSS, JS, `favicon/`) belongs to tsgen. It is resolved from `build.js`'s own directory, and its assets are copied alongside the vault's. Never commit Font Awesome Pro SVGs: the repo is public and the Pro licence bans standalone copies. Icons load from the Pro kit; only rasterized PNGs (`favicon/`) live here. Text fonts come from Typekit, so there are no font files.
 
 ## Architecture in one breath
 

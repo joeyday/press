@@ -28,7 +28,7 @@ Dependencies: `gray-matter`, `markdown-it`, `markdown-it-footnote`, `markdown-it
 
 ## Inputs
 
-`template/` (in tsgen) holds `layout.ejs` and the site's CSS and JS. Icons come from a Font Awesome kit loaded by the layout, and text fonts from Typekit. Its assets are copied to `dist/asset/` along with the vault's.
+`template/` (in tsgen) holds `layout.ejs` and the site's CSS and JS. Icons come from a Font Awesome Pro kit loaded by the layout (the Pro licence forbids publishing standalone copies of the SVGs, so they aren't self-hosted), and text fonts from Typekit. The favicons and touch icons in `template/favicon/` are PNGs rasterized from the Pro feather-pointed icon. Its assets are copied to `dist/asset/` along with the vault's.
 
 The rest come from the vault:
 
